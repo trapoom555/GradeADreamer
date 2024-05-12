@@ -1,1 +1,7 @@
 __pycache__
+*.pyc
+.vscode
+output
+build
+output/
+point_e_model_cache/
