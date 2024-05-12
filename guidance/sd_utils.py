@@ -1,487 +1,348 @@
-from audioop import mul
-from transformers import CLIPTextModel, CLIPTokenizer, logging
-from diffusers import StableDiffusionPipeline, DiffusionPipeline, DDPMScheduler, DDIMScheduler, EulerDiscreteScheduler, \
-                      EulerAncestralDiscreteScheduler, DPMSolverMultistepScheduler, ControlNetModel, \
-                      DDIMInverseScheduler, UNet2DConditionModel
+from diffusers import (
+    DDIMScheduler,
+    StableDiffusionPipeline,
+)
 from diffusers.utils.import_utils import is_xformers_available
-from os.path import isfile
-from pathlib import Path
-import os
-import random
 
-import torchvision.transforms as T
-# suppress partial model loading warning
-logging.set_verbosity_error()
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as T
-from torchvision.utils import save_image
-from torch.cuda.amp import custom_bwd, custom_fwd
-from .perpneg_utils import weighted_perpendicular_aggregator
 
-from .sd_step import *
-
-def rgb2sat(img, T=None):
-    max_ = torch.max(img, dim=1, keepdim=True).values + 1e-5
-    min_ = torch.min(img, dim=1, keepdim=True).values
-    sat = (max_ - min_) / max_
-    if T is not None:
-        sat = (1 - T) * sat
-    return sat
-
-class SpecifyGradient(torch.autograd.Function):
-    @staticmethod
-    @custom_fwd
-    def forward(ctx, input_tensor, gt_grad):
-        ctx.save_for_backward(gt_grad)
-        # we return a dummy value 1, which will be scaled by amp's scaler so we get the scale in backward.
-        return torch.ones([1], device=input_tensor.device, dtype=input_tensor.dtype)
-
-    @staticmethod
-    @custom_bwd
-    def backward(ctx, grad_scale):
-        gt_grad, = ctx.saved_tensors
-        gt_grad = gt_grad * grad_scale
-        return gt_grad, None
 
 def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
-    #torch.backends.cudnn.deterministic = True
-    #torch.backends.cudnn.benchmark = True
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = True
+
 
 class StableDiffusion(nn.Module):
-    def __init__(self, device, fp16, vram_O, t_range=[0.02, 0.98], max_t_range=0.98, num_train_timesteps=None, 
-                 ddim_inv=False, use_control_net=False, textual_inversion_path = None, 
-                 LoRA_path = None, guidance_opt=None):
+    def __init__(
+        self,
+        device,
+        fp16=True,
+        vram_O=False,
+        sd_version="2.1",
+        hf_key=None,
+        t_range=[0.02, 0.98],
+    ):
         super().__init__()
 
         self.device = device
-        self.precision_t = torch.float16 if fp16 else torch.float32
+        self.sd_version = sd_version
 
-        print(f'[INFO] loading stable diffusion...')
-
-        model_key = guidance_opt.model_key
-        assert model_key is not None
-
-        is_safe_tensor = guidance_opt.is_safe_tensor
-        base_model_key = "stabilityai/stable-diffusion-v1-5" if guidance_opt.base_model_key is None else guidance_opt.base_model_key # for finetuned model only
-
-        if is_safe_tensor:
-            pipe = StableDiffusionPipeline.from_single_file(model_key, use_safetensors=True, torch_dtype=self.precision_t, load_safety_checker=False)
+        if hf_key is not None:
+            print(f"[INFO] using hugging face custom model key: {hf_key}")
+            model_key = hf_key
+        elif self.sd_version == "2.1":
+            model_key = "stabilityai/stable-diffusion-2-1-base"
+        elif self.sd_version == "2.0":
+            model_key = "stabilityai/stable-diffusion-2-base"
+        elif self.sd_version == "1.5":
+            model_key = "runwayml/stable-diffusion-v1-5"
         else:
-            pipe = StableDiffusionPipeline.from_pretrained(model_key, torch_dtype=self.precision_t)
+            raise ValueError(
+                f"Stable-diffusion version {self.sd_version} not supported."
+            )
 
-        self.ism = not guidance_opt.sds
-        self.scheduler = DDIMScheduler.from_pretrained(model_key if not is_safe_tensor else base_model_key, subfolder="scheduler", torch_dtype=self.precision_t)
-        self.sche_func = ddim_step
+        self.dtype = torch.float16 if fp16 else torch.float32
 
-        if use_control_net:
-            controlnet_model_key = guidance_opt.controlnet_model_key
-            self.controlnet_depth = ControlNetModel.from_pretrained(controlnet_model_key,torch_dtype=self.precision_t).to(device)
+        # Create model
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_key, torch_dtype=self.dtype
+        )
 
         if vram_O:
             pipe.enable_sequential_cpu_offload()
             pipe.enable_vae_slicing()
             pipe.unet.to(memory_format=torch.channels_last)
             pipe.enable_attention_slicing(1)
-            pipe.enable_model_cpu_offload()
+            # pipe.enable_model_cpu_offload()
+        else:
+            pipe.to(device)
 
-        pipe.enable_xformers_memory_efficient_attention()
-
-        pipe = pipe.to(self.device)
-        if textual_inversion_path is not None:
-            pipe.load_textual_inversion(textual_inversion_path)
-            print("load textual inversion in:.{}".format(textual_inversion_path))
-        
-        if LoRA_path is not None:
-            from lora_diffusion import tune_lora_scale, patch_pipe
-            print("load lora in:.{}".format(LoRA_path))
-            patch_pipe(
-                pipe,
-                LoRA_path,
-                patch_text=True,
-                patch_ti=True,
-                patch_unet=True,
-            )
-            tune_lora_scale(pipe.unet, 1.00)
-            tune_lora_scale(pipe.text_encoder, 1.00)
-
-        self.pipe = pipe
         self.vae = pipe.vae
         self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
         self.unet = pipe.unet
-        
-        self.num_train_timesteps = num_train_timesteps if num_train_timesteps is not None else self.scheduler.config.num_train_timesteps        
-        self.scheduler.set_timesteps(self.num_train_timesteps, device=device)
 
-        self.timesteps = torch.flip(self.scheduler.timesteps, dims=(0, ))
+        self.scheduler = DDIMScheduler.from_pretrained(
+            model_key, subfolder="scheduler", torch_dtype=self.dtype
+        )
+
+        del pipe
+
+        self.num_train_timesteps = self.scheduler.config.num_train_timesteps
         self.min_step = int(self.num_train_timesteps * t_range[0])
         self.max_step = int(self.num_train_timesteps * t_range[1])
-        self.warmup_step = int(self.num_train_timesteps*(max_t_range-t_range[1]))
+        self.alphas = self.scheduler.alphas_cumprod.to(self.device)  # for convenience
 
-        self.noise_temp = None
-        self.noise_gen = torch.Generator(self.device)
-        self.noise_gen.manual_seed(guidance_opt.noise_seed)
-
-        self.alphas = self.scheduler.alphas_cumprod.to(self.device) # for convenience
-        self.rgb_latent_factors = torch.tensor([
-                    # R       G       B
-                    [ 0.298,  0.207,  0.208],
-                    [ 0.187,  0.286,  0.173],
-                    [-0.158,  0.189,  0.264],
-                    [-0.184, -0.271, -0.473]
-                ], device=self.device)
-        
-
-        print(f'[INFO] loaded stable diffusion!')
-
-    def augmentation(self, *tensors):
-        augs = T.Compose([
-                        T.RandomHorizontalFlip(p=0.5),
-                    ])
-        
-        channels = [ten.shape[1] for ten in tensors]
-        tensors_concat = torch.concat(tensors, dim=1)
-        tensors_concat = augs(tensors_concat)
-
-        results = []
-        cur_c = 0
-        for i in range(len(channels)):
-            results.append(tensors_concat[:, cur_c:cur_c + channels[i], ...])
-            cur_c += channels[i]
-        return (ten for ten in results)
-
-    def add_noise_with_cfg(self, latents, noise, 
-                           ind_t, ind_prev_t, 
-                           text_embeddings=None, cfg=1.0, 
-                           delta_t=1, inv_steps=1,
-                           is_noisy_latent=False,
-                           eta=0.0):
-
-        text_embeddings = text_embeddings.to(self.precision_t)
-        if cfg <= 1.0:
-            uncond_text_embedding = text_embeddings.reshape(2, -1, text_embeddings.shape[-2], text_embeddings.shape[-1])[1]
-
-        unet = self.unet
-
-        if is_noisy_latent:
-            prev_noisy_lat = latents
-        else:
-            prev_noisy_lat = self.scheduler.add_noise(latents, noise, self.timesteps[ind_prev_t])
-
-        cur_ind_t = ind_prev_t
-        cur_noisy_lat = prev_noisy_lat
-
-        pred_scores = []
-
-        for i in range(inv_steps):
-            # pred noise
-            cur_noisy_lat_ = self.scheduler.scale_model_input(cur_noisy_lat, self.timesteps[cur_ind_t]).to(self.precision_t)
-            
-            if cfg > 1.0:
-                latent_model_input = torch.cat([cur_noisy_lat_, cur_noisy_lat_])
-                timestep_model_input = self.timesteps[cur_ind_t].reshape(1, 1).repeat(latent_model_input.shape[0], 1).reshape(-1)
-                unet_output = unet(latent_model_input, timestep_model_input, 
-                                encoder_hidden_states=text_embeddings).sample
-                
-                uncond, cond = torch.chunk(unet_output, chunks=2)
-                
-                unet_output = cond + cfg * (uncond - cond) # reverse cfg to enhance the distillation
-            else:
-                timestep_model_input = self.timesteps[cur_ind_t].reshape(1, 1).repeat(cur_noisy_lat_.shape[0], 1).reshape(-1)
-                unet_output = unet(cur_noisy_lat_, timestep_model_input, 
-                                    encoder_hidden_states=uncond_text_embedding).sample
-
-            pred_scores.append((cur_ind_t, unet_output))
-
-            next_ind_t = min(cur_ind_t + delta_t, ind_t)
-            cur_t, next_t = self.timesteps[cur_ind_t], self.timesteps[next_ind_t]
-            delta_t_ = next_t-cur_t if isinstance(self.scheduler, DDIMScheduler) else next_ind_t-cur_ind_t
-
-            cur_noisy_lat = self.sche_func(self.scheduler, unet_output, cur_t, cur_noisy_lat, -delta_t_, eta).prev_sample
-            cur_ind_t = next_ind_t
-
-            del unet_output
-            torch.cuda.empty_cache()
-
-            if cur_ind_t == ind_t:
-                break
-
-        return prev_noisy_lat, cur_noisy_lat, pred_scores[::-1]
-
+        self.embeddings = {}
 
     @torch.no_grad()
-    def get_text_embeds(self, prompt, resolution=(512, 512)):
-        inputs = self.tokenizer(prompt, padding='max_length', max_length=self.tokenizer.model_max_length, truncation=True, return_tensors='pt')
+    def get_text_embeds(self, prompts, negative_prompts):
+        pos_embeds = self.encode_text(prompts)  # [1, 77, 768]
+        neg_embeds = self.encode_text(negative_prompts)
+        self.embeddings['pos'] = pos_embeds
+        self.embeddings['neg'] = neg_embeds
+
+        # directional embeddings
+        for d in ['front', 'side', 'back']:
+            embeds = self.encode_text([f'{p}, {d} view' for p in prompts])
+            self.embeddings[d] = embeds
+    
+    def encode_text(self, prompt):
+        # prompt: [str]
+        inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
         embeddings = self.text_encoder(inputs.input_ids.to(self.device))[0]
         return embeddings
 
-    def train_step_perpneg(self, text_embeddings, pred_rgb, pred_depth=None, pred_alpha=None,
-                           grad_scale=1,use_control_net=False,
-                           save_folder:Path=None, iteration=0, warm_up_rate = 0, weights = 0, 
-                           resolution=(512, 512), guidance_opt=None,as_latent=False, embedding_inverse = None):
+    @torch.no_grad()
+    def refine(self, pred_rgb,
+               guidance_scale=100, steps=50, strength=0.8,
+        ):
 
+        batch_size = pred_rgb.shape[0]
+        pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
+        latents = self.encode_imgs(pred_rgb_512.to(self.dtype))
+        # latents = torch.randn((1, 4, 64, 64), device=self.device, dtype=self.dtype)
 
-        # flip aug
-        pred_rgb, pred_depth, pred_alpha = self.augmentation(pred_rgb, pred_depth, pred_alpha)
+        self.scheduler.set_timesteps(steps)
+        init_step = int(steps * strength)
+        latents = self.scheduler.add_noise(latents, torch.randn_like(latents), self.scheduler.timesteps[init_step])
+        embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
 
-        B = pred_rgb.shape[0]
-        K = text_embeddings.shape[0] - 1
+        for i, t in enumerate(self.scheduler.timesteps[init_step:]):
+    
+            latent_model_input = torch.cat([latents] * 2)
 
-        if as_latent:      
-            latents,_ = self.encode_imgs(pred_depth.repeat(1,3,1,1).to(self.precision_t))
-        else:
-            latents,_ = self.encode_imgs(pred_rgb.to(self.precision_t))
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
+            noise_pred = self.unet(
+                latent_model_input, t, encoder_hidden_states=embeddings,
+            ).sample
+
+            noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+            
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+        imgs = self.decode_latents(latents) # [1, 3, 512, 512]
+        return imgs
+
+    def train_step(
+        self,
+        pred_rgb,
+        step_ratio=None,
+        guidance_scale=100,
+        as_latent=False,
+        vers=None, hors=None,
+    ):
         
-        weights = weights.reshape(-1)
-        noise = torch.randn((latents.shape[0], 4, resolution[0] // 8, resolution[1] // 8, ), dtype=latents.dtype, device=latents.device, generator=self.noise_gen) + 0.1 * torch.randn((1, 4, 1, 1), device=latents.device).repeat(latents.shape[0], 1, 1, 1)
+        batch_size = pred_rgb.shape[0]
+        pred_rgb = pred_rgb.to(self.dtype)
 
-        inverse_text_embeddings = embedding_inverse.unsqueeze(1).repeat(1, B, 1, 1).reshape(-1, embedding_inverse.shape[-2], embedding_inverse.shape[-1])
-
-        text_embeddings = text_embeddings.reshape(-1, text_embeddings.shape[-2], text_embeddings.shape[-1]) # make it k+1, c * t, ...
-
-        if guidance_opt.annealing_intervals:
-            current_delta_t =  int(guidance_opt.delta_t + np.ceil((warm_up_rate)*(guidance_opt.delta_t_start - guidance_opt.delta_t)))
+        if as_latent:
+            latents = F.interpolate(pred_rgb, (64, 64), mode="bilinear", align_corners=False) * 2 - 1
         else:
-            current_delta_t =  guidance_opt.delta_t
-
-        ind_t = torch.randint(self.min_step, self.max_step + int(self.warmup_step*warm_up_rate), (1, ), dtype=torch.long, generator=self.noise_gen, device=self.device)[0]
-        ind_prev_t = max(ind_t - current_delta_t, torch.ones_like(ind_t) * 0)
-
-        t = self.timesteps[ind_t]
-        prev_t = self.timesteps[ind_prev_t]
+            # interp to 512x512 to be fed into vae.
+            pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode="bilinear", align_corners=False)
+            # encode image into latents with vae, requires grad!
+            latents = self.encode_imgs(pred_rgb_512)
 
         with torch.no_grad():
-            # step unroll via ddim inversion
-            if not self.ism:
-                prev_latents_noisy = self.scheduler.add_noise(latents, noise, prev_t)
-                latents_noisy = self.scheduler.add_noise(latents, noise, t)
-                target = noise
+            if step_ratio is not None:
+                # dreamtime-like
+                # t = self.max_step - (self.max_step - self.min_step) * np.sqrt(step_ratio)
+                t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
+                t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
             else:
-                # Step 1: sample x_s with larger steps
-                xs_delta_t = guidance_opt.xs_delta_t if guidance_opt.xs_delta_t is not None else current_delta_t
-                xs_inv_steps = guidance_opt.xs_inv_steps if guidance_opt.xs_inv_steps is not None else int(np.ceil(ind_prev_t / xs_delta_t))
-                starting_ind = max(ind_prev_t - xs_delta_t * xs_inv_steps, torch.ones_like(ind_t) * 0)
+                t = torch.randint(self.min_step, self.max_step + 1, (batch_size,), dtype=torch.long, device=self.device)
 
-                _, prev_latents_noisy, pred_scores_xs = self.add_noise_with_cfg(latents, noise, ind_prev_t, starting_ind, inverse_text_embeddings, 
-                                                                                guidance_opt.denoise_guidance_scale, xs_delta_t, xs_inv_steps, eta=guidance_opt.xs_eta)
-                # Step 2: sample x_t
-                _, latents_noisy, pred_scores_xt = self.add_noise_with_cfg(prev_latents_noisy, noise, ind_t, ind_prev_t, inverse_text_embeddings, 
-                                                                           guidance_opt.denoise_guidance_scale, current_delta_t, 1, is_noisy_latent=True)        
+            # w(t), sigma_t^2
+            w = (1 - self.alphas[t]).view(batch_size, 1, 1, 1)
 
-                pred_scores = pred_scores_xt + pred_scores_xs
-                target = pred_scores[0][1]
+            # predict the noise residual with unet, NO grad!
+            # add noise
+            noise = torch.randn_like(latents)
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
+            # pred noise
+            latent_model_input = torch.cat([latents_noisy] * 2)
+            tt = torch.cat([t] * 2)
 
-
-        with torch.no_grad():
-            latent_model_input = latents_noisy[None, :, ...].repeat(1 + K, 1, 1, 1, 1).reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, )
-            tt = t.reshape(1, 1).repeat(latent_model_input.shape[0], 1).reshape(-1)
-
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, tt[0])
-            if use_control_net:
-                pred_depth_input = pred_depth_input[None, :, ...].repeat(1 + K, 1, 3, 1, 1).reshape(-1, 3, 512, 512).half()
-                down_block_res_samples, mid_block_res_sample = self.controlnet_depth(
-                    latent_model_input,
-                    tt,
-                    encoder_hidden_states=text_embeddings,
-                    controlnet_cond=pred_depth_input,
-                    return_dict=False,
-                )
-                unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings,
-                                    down_block_additional_residuals=down_block_res_samples,
-                                    mid_block_additional_residual=mid_block_res_sample).sample
+            if hors is None:
+                embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
             else:
-                unet_output = self.unet(latent_model_input.to(self.precision_t), tt.to(self.precision_t), encoder_hidden_states=text_embeddings.to(self.precision_t)).sample
+                def _get_dir_ind(h):
+                    if abs(h) < 60: return 'front'
+                    elif abs(h) < 120: return 'side'
+                    else: return 'back'
 
-            unet_output = unet_output.reshape(1 + K, -1, 4, resolution[0] // 8, resolution[1] // 8, )
-            noise_pred_uncond, noise_pred_text = unet_output[:1].reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, ), unet_output[1:].reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, )
-            delta_noise_preds = noise_pred_text - noise_pred_uncond.repeat(K, 1, 1, 1)
-            delta_DSD = weighted_perpendicular_aggregator(delta_noise_preds,\
-                                                            weights,\
-                                                            B)     
+                embeddings = torch.cat([self.embeddings[_get_dir_ind(h)] for h in hors] + [self.embeddings['neg'].expand(batch_size, -1, -1)])
 
-        pred_noise = noise_pred_uncond + guidance_opt.guidance_scale * delta_DSD
-        w = lambda alphas: (((1 - alphas) / alphas) ** 0.5)
+            noise_pred = self.unet(
+                latent_model_input, tt, encoder_hidden_states=embeddings
+            ).sample
 
-        grad = w(self.alphas[t]) * (pred_noise - target)
-        
-        grad = torch.nan_to_num(grad_scale * grad)
-        loss = SpecifyGradient.apply(latents, grad)
+            # perform guidance (high scale from paper!)
+            noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_cond - noise_pred_uncond
+            )
 
-        if iteration % guidance_opt.vis_interval == 0:
-            noise_pred_post = noise_pred_uncond + guidance_opt.guidance_scale * delta_DSD    
-            lat2rgb = lambda x: torch.clip((x.permute(0,2,3,1) @ self.rgb_latent_factors.to(x.dtype)).permute(0,3,1,2), 0., 1.)
-            save_path_iter = os.path.join(save_folder,"iter_{}_step_{}.jpg".format(iteration,prev_t.item()))
-            with torch.no_grad():
-                pred_x0_latent_sp = pred_original(self.scheduler, noise_pred_uncond, prev_t, prev_latents_noisy)    
-                pred_x0_latent_pos = pred_original(self.scheduler, noise_pred_post, prev_t, prev_latents_noisy)        
-                pred_x0_pos = self.decode_latents(pred_x0_latent_pos.type(self.precision_t))
-                pred_x0_sp = self.decode_latents(pred_x0_latent_sp.type(self.precision_t))
+            grad = w * (noise_pred - noise)
+            grad = torch.nan_to_num(grad)
 
-                grad_abs = torch.abs(grad.detach())
-                norm_grad  = F.interpolate((grad_abs / grad_abs.max()).mean(dim=1,keepdim=True), (resolution[0], resolution[1]), mode='bilinear', align_corners=False).repeat(1,3,1,1)
+            # seems important to avoid NaN...
+            # grad = grad.clamp(-1, 1)
 
-                latents_rgb = F.interpolate(lat2rgb(latents), (resolution[0], resolution[1]), mode='bilinear', align_corners=False)
-                latents_sp_rgb = F.interpolate(lat2rgb(pred_x0_latent_sp), (resolution[0], resolution[1]), mode='bilinear', align_corners=False)
-
-                viz_images = torch.cat([pred_rgb, 
-                                        pred_depth.repeat(1, 3, 1, 1), 
-                                        pred_alpha.repeat(1, 3, 1, 1), 
-                                        rgb2sat(pred_rgb, pred_alpha).repeat(1, 3, 1, 1),
-                                        latents_rgb, latents_sp_rgb, 
-                                        norm_grad,
-                                        pred_x0_sp, pred_x0_pos],dim=0) 
-                save_image(viz_images, save_path_iter)
-
+        target = (latents - grad).detach()
+        loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
 
         return loss
 
+    @torch.no_grad()
+    def produce_latents(
+        self,
+        height=512,
+        width=512,
+        num_inference_steps=50,
+        guidance_scale=7.5,
+        latents=None,
+    ):
+        if latents is None:
+            latents = torch.randn(
+                (
+                    1,
+                    self.unet.in_channels,
+                    height // 8,
+                    width // 8,
+                ),
+                device=self.device,
+            )
 
-    def train_step(self, text_embeddings, pred_rgb, pred_depth=None, pred_alpha=None,
-                    grad_scale=1,use_control_net=False,
-                    save_folder:Path=None, iteration=0, warm_up_rate = 0,
-                    resolution=(512, 512), guidance_opt=None,as_latent=False, embedding_inverse = None):
+        batch_size = latents.shape[0]
+        self.scheduler.set_timesteps(num_inference_steps)
+        embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
 
-        pred_rgb, pred_depth, pred_alpha = self.augmentation(pred_rgb, pred_depth, pred_alpha)
+        for i, t in enumerate(self.scheduler.timesteps):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latent_model_input = torch.cat([latents] * 2)
+            # predict the noise residual
+            noise_pred = self.unet(
+                latent_model_input, t, encoder_hidden_states=embeddings
+            ).sample
 
-        B = pred_rgb.shape[0]
-        K = text_embeddings.shape[0] - 1
+            # perform guidance
+            noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (
+                noise_pred_cond - noise_pred_uncond
+            )
 
-        if as_latent:      
-            latents,_ = self.encode_imgs(pred_depth.repeat(1,3,1,1).to(self.precision_t))
-        else:
-            latents,_ = self.encode_imgs(pred_rgb.to(self.precision_t))
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
 
-        if self.noise_temp is None:
-            self.noise_temp = torch.randn((latents.shape[0], 4, resolution[0] // 8, resolution[1] // 8, ), dtype=latents.dtype, device=latents.device, generator=self.noise_gen) + 0.1 * torch.randn((1, 4, 1, 1), device=latents.device).repeat(latents.shape[0], 1, 1, 1)
-        
-        if guidance_opt.fix_noise:
-            noise = self.noise_temp
-        else:
-            noise = torch.randn((latents.shape[0], 4, resolution[0] // 8, resolution[1] // 8, ), dtype=latents.dtype, device=latents.device, generator=self.noise_gen) + 0.1 * torch.randn((1, 4, 1, 1), device=latents.device).repeat(latents.shape[0], 1, 1, 1)
-
-        text_embeddings = text_embeddings[:, :, ...]
-        text_embeddings = text_embeddings.reshape(-1, text_embeddings.shape[-2], text_embeddings.shape[-1]) # make it k+1, c * t, ...
-
-        inverse_text_embeddings = embedding_inverse.unsqueeze(1).repeat(1, B, 1, 1).reshape(-1, embedding_inverse.shape[-2], embedding_inverse.shape[-1])
-
-        if guidance_opt.annealing_intervals:
-            current_delta_t =  int(guidance_opt.delta_t + (warm_up_rate)*(guidance_opt.delta_t_start - guidance_opt.delta_t))
-        else:
-            current_delta_t =  guidance_opt.delta_t
-
-        ind_t = torch.randint(self.min_step, self.max_step + int(self.warmup_step*warm_up_rate), (1, ), dtype=torch.long, generator=self.noise_gen, device=self.device)[0]
-        ind_prev_t = max(ind_t - current_delta_t, torch.ones_like(ind_t) * 0)
-
-        t = self.timesteps[ind_t]
-        prev_t = self.timesteps[ind_prev_t]
-
-        with torch.no_grad():
-            # step unroll via ddim inversion
-            if not self.ism:
-                prev_latents_noisy = self.scheduler.add_noise(latents, noise, prev_t)
-                latents_noisy = self.scheduler.add_noise(latents, noise, t)
-                target = noise
-            else:
-                # Step 1: sample x_s with larger steps
-                xs_delta_t = guidance_opt.xs_delta_t if guidance_opt.xs_delta_t is not None else current_delta_t
-                xs_inv_steps = guidance_opt.xs_inv_steps if guidance_opt.xs_inv_steps is not None else int(np.ceil(ind_prev_t / xs_delta_t))
-                starting_ind = max(ind_prev_t - xs_delta_t * xs_inv_steps, torch.ones_like(ind_t) * 0)
-
-                _, prev_latents_noisy, pred_scores_xs = self.add_noise_with_cfg(latents, noise, ind_prev_t, starting_ind, inverse_text_embeddings, 
-                                                                                guidance_opt.denoise_guidance_scale, xs_delta_t, xs_inv_steps, eta=guidance_opt.xs_eta)
-                # Step 2: sample x_t
-                _, latents_noisy, pred_scores_xt = self.add_noise_with_cfg(prev_latents_noisy, noise, ind_t, ind_prev_t, inverse_text_embeddings, 
-                                                                           guidance_opt.denoise_guidance_scale, current_delta_t, 1, is_noisy_latent=True)        
-
-                pred_scores = pred_scores_xt + pred_scores_xs
-                target = pred_scores[0][1]
-
-
-        with torch.no_grad():
-            latent_model_input = latents_noisy[None, :, ...].repeat(2, 1, 1, 1, 1).reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, )
-            tt = t.reshape(1, 1).repeat(latent_model_input.shape[0], 1).reshape(-1)
-
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, tt[0])
-            if use_control_net:
-                pred_depth_input = pred_depth_input[None, :, ...].repeat(1 + K, 1, 3, 1, 1).reshape(-1, 3, 512, 512).half()
-                down_block_res_samples, mid_block_res_sample = self.controlnet_depth(
-                    latent_model_input,
-                    tt,
-                    encoder_hidden_states=text_embeddings,
-                    controlnet_cond=pred_depth_input,
-                    return_dict=False,
-                )
-                unet_output = self.unet(latent_model_input, tt, encoder_hidden_states=text_embeddings,
-                                    down_block_additional_residuals=down_block_res_samples,
-                                    mid_block_additional_residual=mid_block_res_sample).sample
-            else:
-                unet_output = self.unet(latent_model_input.to(self.precision_t), tt.to(self.precision_t), encoder_hidden_states=text_embeddings.to(self.precision_t)).sample
-
-            unet_output = unet_output.reshape(2, -1, 4, resolution[0] // 8, resolution[1] // 8, )
-            noise_pred_uncond, noise_pred_text = unet_output[:1].reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, ), unet_output[1:].reshape(-1, 4, resolution[0] // 8, resolution[1] // 8, )
-            delta_DSD = noise_pred_text - noise_pred_uncond
-        
-        pred_noise = noise_pred_uncond + guidance_opt.guidance_scale * delta_DSD
-
-        w = lambda alphas: (((1 - alphas) / alphas) ** 0.5)     
-
-        grad = w(self.alphas[t]) * (pred_noise - target)
-
-        grad = torch.nan_to_num(grad_scale * grad)
-        loss = SpecifyGradient.apply(latents, grad)
-              
-        if iteration % guidance_opt.vis_interval == 0:
-            noise_pred_post = noise_pred_uncond + 7.5* delta_DSD    
-            lat2rgb = lambda x: torch.clip((x.permute(0,2,3,1) @ self.rgb_latent_factors.to(x.dtype)).permute(0,3,1,2), 0., 1.)
-            save_path_iter = os.path.join(save_folder,"iter_{}_step_{}.jpg".format(iteration,prev_t.item()))
-            with torch.no_grad():
-                pred_x0_latent_sp = pred_original(self.scheduler, noise_pred_uncond, prev_t, prev_latents_noisy)    
-                pred_x0_latent_pos = pred_original(self.scheduler, noise_pred_post, prev_t, prev_latents_noisy)        
-                pred_x0_pos = self.decode_latents(pred_x0_latent_pos.type(self.precision_t))
-                pred_x0_sp = self.decode_latents(pred_x0_latent_sp.type(self.precision_t))
-                # pred_x0_uncond = pred_x0_sp[:1, ...]
-
-                grad_abs = torch.abs(grad.detach())
-                norm_grad  = F.interpolate((grad_abs / grad_abs.max()).mean(dim=1,keepdim=True), (resolution[0], resolution[1]), mode='bilinear', align_corners=False).repeat(1,3,1,1)
-
-                latents_rgb = F.interpolate(lat2rgb(latents), (resolution[0], resolution[1]), mode='bilinear', align_corners=False)
-                latents_sp_rgb = F.interpolate(lat2rgb(pred_x0_latent_sp), (resolution[0], resolution[1]), mode='bilinear', align_corners=False)
-
-                viz_images = torch.cat([pred_rgb, 
-                                        pred_depth.repeat(1, 3, 1, 1), 
-                                        pred_alpha.repeat(1, 3, 1, 1), 
-                                        rgb2sat(pred_rgb, pred_alpha).repeat(1, 3, 1, 1),
-                                        latents_rgb, latents_sp_rgb, norm_grad,
-                                        pred_x0_sp, pred_x0_pos],dim=0) 
-                save_image(viz_images, save_path_iter)
-
-        return loss
+        return latents
 
     def decode_latents(self, latents):
-        target_dtype = latents.dtype
-        latents = latents / self.vae.config.scaling_factor
+        latents = 1 / self.vae.config.scaling_factor * latents
 
-        imgs = self.vae.decode(latents.to(self.vae.dtype)).sample
+        imgs = self.vae.decode(latents).sample
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
 
-        return imgs.to(target_dtype)
+        return imgs
 
     def encode_imgs(self, imgs):
-        target_dtype = imgs.dtype
         # imgs: [B, 3, H, W]
+
         imgs = 2 * imgs - 1
 
-        posterior = self.vae.encode(imgs.to(self.vae.dtype)).latent_dist
-        kl_divergence = posterior.kl()
-
+        posterior = self.vae.encode(imgs).latent_dist
         latents = posterior.sample() * self.vae.config.scaling_factor
 
-        return latents.to(target_dtype), kl_divergence
+        return latents
+
+    def prompt_to_img(
+        self,
+        prompts,
+        negative_prompts="",
+        height=512,
+        width=512,
+        num_inference_steps=50,
+        guidance_scale=7.5,
+        latents=None,
+    ):
+        if isinstance(prompts, str):
+            prompts = [prompts]
+
+        if isinstance(negative_prompts, str):
+            negative_prompts = [negative_prompts]
+
+        # Prompts -> text embeds
+        self.get_text_embeds(prompts, negative_prompts)
+        
+        # Text embeds -> img latents
+        latents = self.produce_latents(
+            height=height,
+            width=width,
+            latents=latents,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+        )  # [1, 4, 64, 64]
+
+        # Img latents -> imgs
+        imgs = self.decode_latents(latents)  # [1, 3, 512, 512]
+
+        # Img to Numpy
+        imgs = imgs.detach().cpu().permute(0, 2, 3, 1).numpy()
+        imgs = (imgs * 255).round().astype("uint8")
+
+        return imgs
+
+
+if __name__ == "__main__":
+    import argparse
+    import matplotlib.pyplot as plt
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("prompt", type=str)
+    parser.add_argument("--negative", default="", type=str)
+    parser.add_argument(
+        "--sd_version",
+        type=str,
+        default="2.1",
+        choices=["1.5", "2.0", "2.1"],
+        help="stable diffusion version",
+    )
+    parser.add_argument(
+        "--hf_key",
+        type=str,
+        default=None,
+        help="hugging face Stable diffusion model key",
+    )
+    parser.add_argument("--fp16", action="store_true", help="use float16 for training")
+    parser.add_argument(
+        "--vram_O", action="store_true", help="optimization for low VRAM usage"
+    )
+    parser.add_argument("-H", type=int, default=512)
+    parser.add_argument("-W", type=int, default=512)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--steps", type=int, default=50)
+    opt = parser.parse_args()
+
+    seed_everything(opt.seed)
+
+    device = torch.device("cuda")
+
+    sd = StableDiffusion(device, opt.fp16, opt.vram_O, opt.sd_version, opt.hf_key)
+
+    imgs = sd.prompt_to_img(opt.prompt, opt.negative, opt.H, opt.W, opt.steps)
+
+    # visualize image
+    plt.imshow(imgs[0])
+    plt.show()
