@@ -12,6 +12,7 @@ import rembg
 
 from cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
+from torch.optim import Adam
 
 from grid_put import mipmap_linear_grid_put_2d
 from mesh import Mesh, safe_normalize
@@ -59,6 +60,7 @@ class GUI:
         # training stuff
         self.training = False
         self.optimizer = None
+        self.lora_optimizer = None
         self.step = 0
         self.train_steps = 1  # steps per rendering loop
         
@@ -149,6 +151,8 @@ class GUI:
                 from guidance.sd_utils import StableDiffusion
                 self.guidance_sd = StableDiffusion(self.device)
                 print(f"[INFO] loaded SD!")
+        
+        self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=1e-4)
 
         if self.guidance_zero123 is None and self.enable_zero123:
             print(f"[INFO] loading zero123...")
@@ -262,12 +266,18 @@ class GUI:
             # guidance loss
             if self.enable_sd:
                 if self.opt.mvdream or self.opt.imagedream:
-                    loss = loss + self.opt.lambda_sd * self.guidance_sd.train_step(images, poses, step_ratio=step_ratio if self.opt.anneal_timestep else None)
+                    ## HERE
+                    guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, step_ratio=step_ratio if self.opt.anneal_timestep else None)
+                    loss = loss + self.opt.lambda_sd * guide_loss
                 else:
                     loss = loss + self.opt.lambda_sd * self.guidance_sd.train_step(images, step_ratio=step_ratio if self.opt.anneal_timestep else None)
 
             if self.enable_zero123:
                 loss = loss + self.opt.lambda_zero123 * self.guidance_zero123.train_step(images, vers, hors, radii, step_ratio=step_ratio if self.opt.anneal_timestep else None, default_elevation=self.opt.elevation)
+            
+            lora_loss.backward(retain_graph=True)
+            self.lora_optimizer.step()
+            self.lora_optimizer.zero_grad()
             
             # optimize step
             loss.backward()
