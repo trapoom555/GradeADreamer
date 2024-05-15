@@ -130,7 +130,7 @@ class MVDream(nn.Module):
         grad = (pretrained_noise_pred - noise_pred)
         grad = torch.nan_to_num(grad)
         # seems important to avoid NaN...
-        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
+        # grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
 
         target = (latents - grad).detach()
         loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
@@ -138,7 +138,7 @@ class MVDream(nn.Module):
         # LoRA
         grad_lora = (noise_pred - noise)
         grad_lora = torch.nan_to_num(grad_lora)
-        grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
+        # grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
         target = (latents - grad_lora).detach()
         loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
 
