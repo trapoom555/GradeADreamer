@@ -6,6 +6,7 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 
 import torch
+import torchvision
 import torch.nn.functional as F
 
 import rembg
@@ -138,7 +139,7 @@ class GUI:
         if self.guidance_sd is None and self.enable_sd:
             if self.opt.mvdream:
                 print(f"[INFO] loading MVDream...")
-                from guidance.mvdream_utils import MVDream
+                from mvdream_utils import MVDream
                 self.guidance_sd = MVDream(self.device)
                 print(f"[INFO] loaded MVDream!")
             elif self.opt.imagedream:
@@ -152,7 +153,7 @@ class GUI:
                 self.guidance_sd = StableDiffusion(self.device)
                 print(f"[INFO] loaded SD!")
         
-        self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=1e-4)
+        self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=1e-5)
 
         if self.guidance_zero123 is None and self.enable_zero123:
             print(f"[INFO] loading zero123...")
@@ -262,6 +263,8 @@ class GUI:
             # import kiui
             # print(hor, ver)
             # kiui.vis.plot_image(images)
+
+            torchvision.utils.save_image(images, 'logs/img.jpg')
 
             # guidance loss
             if self.enable_sd:

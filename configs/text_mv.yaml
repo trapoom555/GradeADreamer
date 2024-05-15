@@ -33,7 +33,7 @@ warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 5000
+iters: 500
 # whether to linearly anneal timestep
 anneal_timestep: True
 # training iterations for stage 2
@@ -61,7 +61,7 @@ H: 800
 W: 800
 
 ### Gaussian splatting
-num_pts: 5000
+num_pts: 7000
 sh_degree: 0
 position_lr_init: 0.001
 position_lr_final: 0.00002
