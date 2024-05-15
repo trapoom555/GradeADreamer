@@ -44,6 +44,7 @@ density_end_iter: 3000
 densification_interval: 50
 opacity_reset_interval: 700
 densify_grad_threshold: 0.01
+render_resolution: 512
 
 ### Textured Mesh
 geom_lr: 0.0001

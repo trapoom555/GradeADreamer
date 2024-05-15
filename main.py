@@ -79,7 +79,6 @@ class Trainer:
             loss = 0
 
             ### novel view (manual batch)
-            render_resolution = 128 if step_ratio < 0.3 else (256 if step_ratio < 0.6 else 512)
             images = []
             poses = []
             vers, hors, radii = [], [], []
@@ -101,7 +100,7 @@ class Trainer:
                 pose = orbit_camera(self.opt.elevation + ver, hor, self.opt.radius + radius)
                 poses.append(pose)
 
-                cur_cam = MiniCam(pose, render_resolution, render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
+                cur_cam = MiniCam(pose, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
 
                 bg_color = torch.tensor([1, 1, 1] if np.random.rand() > self.opt.invert_bg_prob else [0, 0, 0], dtype=torch.float32, device="cuda")
                 out = self.renderer.render(cur_cam, bg_color=bg_color)
@@ -114,7 +113,7 @@ class Trainer:
                     pose_i = orbit_camera(self.opt.elevation + ver, hor + 90 * view_i, self.opt.radius + radius)
                     poses.append(pose_i)
 
-                    cur_cam_i = MiniCam(pose_i, render_resolution, render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
+                    cur_cam_i = MiniCam(pose_i, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
 
                     # bg_color = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device="cuda")
                     out_i = self.renderer.render(cur_cam_i, bg_color=bg_color)
