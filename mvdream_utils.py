@@ -17,27 +17,26 @@ class MVDream(nn.Module):
         device,
         model_name='sd-v2.1-base-4view',
         ckpt_path=None,
+        opt=None,
         t_range=[0.02, 0.98],
     ):
         super().__init__()
 
+        self.opt = opt
         self.device = device
         self.model_name = model_name
         self.ckpt_path = ckpt_path
 
         self.model = build_model(self.model_name, ckpt_path=self.ckpt_path).eval().to(self.device)
         self.model.device = device
-        # for p in self.model.parameters():
-        #     p.requires_grad_(False)
 
         # LoRA
         config = LoraConfig(
-            r=16,
-            lora_alpha=16,
+            r=opt.lora_rank,
+            lora_alpha=opt.lora_alpha,
             target_modules=["to_q", "to_v"],
-            lora_dropout=0.1,
+            lora_dropout=opt.lora_dropout,
             bias="none",
-            modules_to_save=["classifier"],
         )
 
         self.model = get_peft_model(self.model, config)
@@ -67,45 +66,6 @@ class MVDream(nn.Module):
         with self.model.disable_adapter():
             embeddings = self.model.get_learned_conditioning(prompt).to(self.device)
         return embeddings
-    
-    # @torch.no_grad()
-    # def refine(self, pred_rgb, camera,
-    #            guidance_scale=100, steps=50, strength=0.8,
-    #     ):
-
-    #     batch_size = pred_rgb.shape[0]
-    #     real_batch_size = batch_size // 4
-    #     pred_rgb_256 = F.interpolate(pred_rgb, (256, 256), mode='bilinear', align_corners=False)
-    #     latents = self.encode_imgs(pred_rgb_256.to(self.dtype))
-    #     # latents = torch.randn((1, 4, 64, 64), device=self.device, dtype=self.dtype)
-
-    #     self.scheduler.set_timesteps(steps)
-    #     init_step = int(steps * strength)
-    #     latents = self.scheduler.add_noise(latents, torch.randn_like(latents), self.scheduler.timesteps[init_step])
-
-    #     camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
-    #     camera[:, 1] *= -1
-    #     camera = normalize_camera(camera).view(batch_size, 16)
-    #     camera = camera.repeat(2, 1)
-
-    #     embeddings = torch.cat([self.embeddings['neg'].repeat(real_batch_size, 1, 1), self.embeddings['pos'].repeat(real_batch_size, 1, 1)], dim=0)
-    #     context = {"context": embeddings, "camera": camera, "num_frames": 4}
-
-    #     for i, t in enumerate(self.scheduler.timesteps[init_step:]):
-    
-    #         latent_model_input = torch.cat([latents] * 2)
-            
-    #         tt = torch.cat([t.unsqueeze(0).repeat(batch_size)] * 2).to(self.device)
-
-    #         noise_pred = self.model.apply_model(latent_model_input, tt, context)
-
-    #         noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-    #         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
-            
-    #         latents = self.scheduler.step(noise_pred, t, latents).prev_sample
-
-    #     imgs = self.decode_latents(latents) # [1, 3, 512, 512]
-    #     return imgs
 
     def train_step(
         self,
@@ -137,9 +97,6 @@ class MVDream(nn.Module):
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
 
-        # camera = convert_opengl_to_blender(camera)
-        # flip_yz = torch.tensor([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]).unsqueeze(0)
-        # camera = torch.matmul(flip_yz.to(camera), camera)
         camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
         camera[:, 1] *= -1
         camera = normalize_camera(camera).view(batch_size, 16)
@@ -172,9 +129,8 @@ class MVDream(nn.Module):
         ## [HERE] Noise_pred - noise for guidance
         grad = (pretrained_noise_pred - noise_pred)
         grad = torch.nan_to_num(grad)
-
         # seems important to avoid NaN...
-        # grad = grad.clamp(-1, 1)
+        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
 
         target = (latents - grad).detach()
         loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
@@ -182,6 +138,7 @@ class MVDream(nn.Module):
         # LoRA
         grad_lora = (noise_pred - noise)
         grad_lora = torch.nan_to_num(grad_lora)
+        grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
         target = (latents - grad_lora).detach()
         loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
 
