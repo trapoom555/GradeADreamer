@@ -54,6 +54,8 @@ class MVDream(nn.Module):
             "stabilityai/stable-diffusion-2-1-base", subfolder="scheduler", torch_dtype=self.dtype
         )
 
+        self.alphas = self.scheduler.alphas_cumprod.to(self.device)
+
     @torch.no_grad()
     def get_text_embeds(self, prompts, negative_prompts):
         pos_embeds = self.encode_text(prompts).repeat(4,1,1)  # [1, 77, 768]
@@ -121,16 +123,17 @@ class MVDream(nn.Module):
             pretrained_noise_pred = pretrained_noise_pred_uncond + guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
             
         noise_pred = self.model.apply_model(latent_model_input, tt, context)
-        # assert torch.equal(noise_pred, pretrained_noise_pred) ## Assert error, cool ! lora makes sense
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
 
+        w = (1 - self.alphas[t[0]])
+
         ## [HERE] Noise_pred - noise for guidance
-        grad = (pretrained_noise_pred - noise_pred)
+        grad = w * (pretrained_noise_pred - noise_pred)
         grad = torch.nan_to_num(grad)
         # seems important to avoid NaN...
-        # grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
+        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
 
         target = (latents - grad).detach()
         loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
@@ -138,7 +141,7 @@ class MVDream(nn.Module):
         # LoRA
         grad_lora = (noise_pred - noise)
         grad_lora = torch.nan_to_num(grad_lora)
-        # grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
+        grad_lora = torch.clamp(grad_lora, -self.opt.lora_grad_clip, self.opt.lora_grad_clip)
         target = (latents - grad_lora).detach()
         loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
 

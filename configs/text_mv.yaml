@@ -8,11 +8,10 @@ density_thresh: 1
 ### Output
 outdir: logs
 mesh_format: obj
-save_path: ???
 
 ### Training
 # guidance loss weights (0 to disable)
-lambda_sd: 1
+lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
@@ -24,9 +23,9 @@ anneal_timestep: False
 # prob to invert background color during training (0 = always black, 1 = always white)
 invert_bg_prob: 0.5
 # gradient clipping
-grad_clip: 10
+grad_clip: 1
 # LoRA gradient clipping
-lora_grad_clip: 10
+lora_grad_clip: 100
 
 ### Gaussian splatting
 num_pts: 5000
