@@ -11,17 +11,17 @@ mesh_format: obj
 
 ### Training
 # guidance loss weights (0 to disable)
-lambda_sd: 0.1
+lambda_sd: 0.5
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 1000
+iters: 500
 # whether to linearly anneal timestep
-anneal_timestep: False
+anneal_timestep: True
 # prob to invert background color during training (0 = always black, 1 = always white)
-invert_bg_prob: 0.5
+invert_bg_prob: 0
 # gradient clipping
 grad_clip: 1
 # LoRA gradient clipping
@@ -63,7 +63,7 @@ min_ver: -30
 max_ver: 30
 
 ### LoRA
-lora_lr: 0.0001
+lora_lr: 0.001
 lora_rank: 16
 lora_alpha: 16
 lora_dropout: 0.1
