@@ -9,24 +9,38 @@ from mvdream.ldm.models.diffusion.ddim import DDIMSampler
 
 from diffusers import DDIMScheduler
 
+from peft import LoraConfig, get_peft_model
+
 class MVDream(nn.Module):
     def __init__(
         self,
         device,
         model_name='sd-v2.1-base-4view',
         ckpt_path=None,
+        opt=None,
         t_range=[0.02, 0.98],
     ):
         super().__init__()
 
+        self.opt = opt
         self.device = device
         self.model_name = model_name
         self.ckpt_path = ckpt_path
 
         self.model = build_model(self.model_name, ckpt_path=self.ckpt_path).eval().to(self.device)
         self.model.device = device
-        for p in self.model.parameters():
-            p.requires_grad_(False)
+
+        # LoRA
+        config = LoraConfig(
+            r=opt.lora_rank,
+            lora_alpha=opt.lora_alpha,
+            target_modules=["to_q", "to_v"],
+            lora_dropout=opt.lora_dropout,
+            bias="none",
+        )
+
+        self.model = get_peft_model(self.model, config)
+        self.model.print_trainable_parameters()
 
         self.dtype = torch.float32
 
@@ -49,47 +63,9 @@ class MVDream(nn.Module):
     
     def encode_text(self, prompt):
         # prompt: [str]
-        embeddings = self.model.get_learned_conditioning(prompt).to(self.device)
+        with self.model.disable_adapter():
+            embeddings = self.model.get_learned_conditioning(prompt).to(self.device)
         return embeddings
-    
-    @torch.no_grad()
-    def refine(self, pred_rgb, camera,
-               guidance_scale=100, steps=50, strength=0.8,
-        ):
-
-        batch_size = pred_rgb.shape[0]
-        real_batch_size = batch_size // 4
-        pred_rgb_256 = F.interpolate(pred_rgb, (256, 256), mode='bilinear', align_corners=False)
-        latents = self.encode_imgs(pred_rgb_256.to(self.dtype))
-        # latents = torch.randn((1, 4, 64, 64), device=self.device, dtype=self.dtype)
-
-        self.scheduler.set_timesteps(steps)
-        init_step = int(steps * strength)
-        latents = self.scheduler.add_noise(latents, torch.randn_like(latents), self.scheduler.timesteps[init_step])
-
-        camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
-        camera[:, 1] *= -1
-        camera = normalize_camera(camera).view(batch_size, 16)
-        camera = camera.repeat(2, 1)
-
-        embeddings = torch.cat([self.embeddings['neg'].repeat(real_batch_size, 1, 1), self.embeddings['pos'].repeat(real_batch_size, 1, 1)], dim=0)
-        context = {"context": embeddings, "camera": camera, "num_frames": 4}
-
-        for i, t in enumerate(self.scheduler.timesteps[init_step:]):
-    
-            latent_model_input = torch.cat([latents] * 2)
-            
-            tt = torch.cat([t.unsqueeze(0).repeat(batch_size)] * 2).to(self.device)
-
-            noise_pred = self.model.apply_model(latent_model_input, tt, context)
-
-            noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
-            
-            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
-
-        imgs = self.decode_latents(latents) # [1, 3, 512, 512]
-        return imgs
 
     def train_step(
         self,
@@ -101,6 +77,7 @@ class MVDream(nn.Module):
     ):
         
         batch_size = pred_rgb.shape[0]
+        ## 4 views per images
         real_batch_size = batch_size // 4
         pred_rgb = pred_rgb.to(self.dtype)
 
@@ -120,41 +97,9 @@ class MVDream(nn.Module):
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
 
-        # camera = convert_opengl_to_blender(camera)
-        # flip_yz = torch.tensor([[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]).unsqueeze(0)
-        # camera = torch.matmul(flip_yz.to(camera), camera)
         camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
         camera[:, 1] *= -1
         camera = normalize_camera(camera).view(batch_size, 16)
-
-        ###############
-        # sampler = DDIMSampler(self.model)
-        # shape = [4, 32, 32]
-        # c_ = {"context": self.embeddings['pos']}
-        # uc_ = {"context": self.embeddings['neg']}
-
-        # # print(camera)
-
-        # # camera = get_camera(4, elevation=0, azimuth_start=0)
-        # # camera = camera.repeat(batch_size // 4, 1).to(self.device)
-
-        # # print(camera)
-
-        # c_["camera"] = uc_["camera"] = camera
-        # c_["num_frames"] = uc_["num_frames"] = 4
-
-        # latents_, _ = sampler.sample(S=30, conditioning=c_,
-        #                                 batch_size=batch_size, shape=shape,
-        #                                 verbose=False, 
-        #                                 unconditional_guidance_scale=guidance_scale,
-        #                                 unconditional_conditioning=uc_,
-        #                                 eta=0, x_T=None)
-
-        # # Img latents -> imgs
-        # imgs = self.decode_latents(latents_)  # [4, 3, 256, 256]
-        # import kiui
-        # kiui.vis.plot_image(imgs)
-        ###############
 
         camera = camera.repeat(2, 1)
         embeddings = torch.cat([self.embeddings['neg'].repeat(real_batch_size, 1, 1), self.embeddings['pos'].repeat(real_batch_size, 1, 1)], dim=0)
@@ -162,32 +107,42 @@ class MVDream(nn.Module):
 
         # predict the noise residual with unet, NO grad!
         with torch.no_grad():
-            # add noise
+            # add noise ~ N(0,1)
             noise = torch.randn_like(latents)
             latents_noisy = self.model.q_sample(latents, t, noise)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
 
-            # import kiui
-            # kiui.lo(latent_model_input, t, context['context'], context['camera'])
+            with self.model.disable_adapter():
+                pretrained_noise_pred = self.model.apply_model(latent_model_input, tt, context)
             
-            noise_pred = self.model.apply_model(latent_model_input, tt, context)
+            pretrained_noise_pred_uncond, pretrained_noise_pred_pos = pretrained_noise_pred.chunk(2)
+            pretrained_noise_pred = pretrained_noise_pred_uncond + guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
+            
+        noise_pred = self.model.apply_model(latent_model_input, tt, context)
+        # assert torch.equal(noise_pred, pretrained_noise_pred) ## Assert error, cool ! lora makes sense
+        # perform guidance (high scale from paper!)
+        noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
+        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
 
-            # perform guidance (high scale from paper!)
-            noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
-
-        grad = (noise_pred - noise)
+        ## [HERE] Noise_pred - noise for guidance
+        grad = (pretrained_noise_pred - noise_pred)
         grad = torch.nan_to_num(grad)
-
         # seems important to avoid NaN...
-        # grad = grad.clamp(-1, 1)
+        # grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
 
         target = (latents - grad).detach()
         loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
 
-        return loss
+        # LoRA
+        grad_lora = (noise_pred - noise)
+        grad_lora = torch.nan_to_num(grad_lora)
+        # grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
+        target = (latents - grad_lora).detach()
+        loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+
+        return loss, loss_lora
 
     def decode_latents(self, latents):
         imgs = self.model.decode_first_stage(latents)

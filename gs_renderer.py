@@ -13,11 +13,9 @@ from diff_gaussian_rasterization import (
 )
 from simple_knn._C import distCUDA2
 
-from sh_utils import eval_sh, SH2RGB, RGB2SH
-from mesh import Mesh
-from mesh_utils import decimate_mesh, clean_mesh
-
-import kiui
+from utils.sh_utils import eval_sh, SH2RGB, RGB2SH
+from utils.mesh import Mesh
+from utils.mesh_utils import decimate_mesh, clean_mesh
 
 def inverse_sigmoid(x):
     return torch.log(x/(1-x))
@@ -282,14 +280,10 @@ class GaussianModel:
                         end = min(start + batch_g, g_covs.shape[1])
                         w = gaussian_3d_coeff(g_pts[:, start:end].reshape(-1, 3), g_covs[:, start:end].reshape(-1, 6)).reshape(pts.shape[0], -1) # [M, l]
                         val += (mask_opas[:, start:end] * w).sum(-1)
-                    
-                    # kiui.lo(val, mask_opas, w)
                 
                     occ[xi * split_size: xi * split_size + len(xs), 
                         yi * split_size: yi * split_size + len(ys), 
                         zi * split_size: zi * split_size + len(zs)] = val.reshape(len(xs), len(ys), len(zs)) 
-        
-        kiui.lo(occ, verbose=1)
 
         return occ
     
