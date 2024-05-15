@@ -11,6 +11,8 @@ from diffusers import DDIMScheduler
 
 from peft import LoraConfig, get_peft_model
 
+from utils.grad_helper import SpecifyGradient
+
 class MVDream(nn.Module):
     def __init__(
         self,
@@ -134,16 +136,13 @@ class MVDream(nn.Module):
         grad = torch.nan_to_num(grad)
         # seems important to avoid NaN...
         grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
-
-        target = (latents - grad).detach()
-        loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+        loss = SpecifyGradient.apply(latents, grad)
 
         # LoRA
         grad_lora = (noise_pred - noise)
         grad_lora = torch.nan_to_num(grad_lora)
         grad_lora = torch.clamp(grad_lora, -self.opt.lora_grad_clip, self.opt.lora_grad_clip)
-        target = (latents - grad_lora).detach()
-        loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+        loss_lora = SpecifyGradient.apply(latents, grad_lora)
 
         return loss, loss_lora
 
