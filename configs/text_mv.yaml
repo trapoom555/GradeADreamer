@@ -19,10 +19,13 @@ warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 2000
+iters: 1000
 # whether to linearly anneal timestep
 anneal_timestep: True
-anneal_iters: 500
+max_linear_anneal_iters: 300
+t_sampling: [0.02, 0.98]
+anneal_detail_iters: 500
+detail_t_sampling: [0.02, 0.50]
 # prob to invert background color during training (0 = always black, 1 = always white)
 invert_bg_prob: 0
 # gradient clipping

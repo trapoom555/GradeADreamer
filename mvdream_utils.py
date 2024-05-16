@@ -46,15 +46,17 @@ class MVDream(nn.Module):
 
         self.dtype = torch.float32
 
-        self.num_train_timesteps = 1000
-        self.min_step = int(self.num_train_timesteps * t_range[0])
-        self.max_step = int(self.num_train_timesteps * t_range[1])
-
-        self.embeddings = {}
-
         self.scheduler = DDIMScheduler.from_pretrained(
             "stabilityai/stable-diffusion-2-1-base", subfolder="scheduler", torch_dtype=self.dtype
         )
+
+        self.num_train_timesteps = self.scheduler.config.num_train_timesteps
+        self.min_step = int(self.num_train_timesteps * opt.t_sampling[0])
+        self.max_step = int(self.num_train_timesteps * opt.t_sampling[1])
+        self.min_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[0])
+        self.max_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[1])
+
+        self.embeddings = {}
 
         self.alphas = self.scheduler.alphas_cumprod.to(self.device)
 
@@ -92,10 +94,17 @@ class MVDream(nn.Module):
             # encode image into latents with vae, requires grad!
             latents = self.encode_imgs(pred_rgb_256)
 
-        if self.opt.anneal_timestep and (steps <= self.opt.anneal_iters):
-            step_ratio = min(1, steps / self.opt.anneal_iters)
-            t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
-            t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
+        if self.opt.anneal_timestep:
+            if steps <= self.opt.max_linear_anneal_iters:
+                step_ratio = min(1, steps / self.opt.max_linear_anneal_iters)
+                t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
+                t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
+            elif (steps > self.opt.max_linear_anneal_iters) and (steps <= self.opt.anneal_detail_iters):
+                # t ~ U(0.02, 0.98)
+                t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
+            else:
+                # t ~ U(0.02, 0.50)
+                t = torch.randint(self.min_step_detail, self.max_step_detail + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
 
