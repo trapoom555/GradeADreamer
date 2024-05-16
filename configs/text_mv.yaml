@@ -13,13 +13,13 @@ mesh_format: obj
 # guidance scale
 guidance_scale: 7.5
 # guidance loss weights (0 to disable)
-lambda_sd: 0.5
+lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 1000
+iters: 3000
 # whether to linearly anneal timestep
 anneal_timestep: True
 max_linear_anneal_iters: 300
@@ -37,13 +37,13 @@ lora_grad_clip: 100
 num_pts: 100000
 sh_degree: 0
 position_lr_init: 0.001
-position_lr_final: 0.00002
+position_lr_final: 0.0000016
 position_lr_delay_mult: 0.02
-position_lr_max_steps: 300
+position_lr_max_steps: 500
 feature_lr: 0.01
 opacity_lr: 0.05
 scaling_lr: 0.005
-rotation_lr: 0.005
+rotation_lr: 0.001
 percent_dense: 0.01
 density_start_iter: 0
 density_end_iter: 3000
@@ -70,7 +70,7 @@ min_ver: -30
 max_ver: 30
 
 ### LoRA
-lora_lr: 0.001
-lora_rank: 16
-lora_alpha: 16
-lora_dropout: 0.1
+lora_lr: 0.0001
+lora_rank: 8
+lora_alpha: 32
+lora_dropout: 0.0

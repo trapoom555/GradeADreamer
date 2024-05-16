@@ -36,7 +36,7 @@ class MVDream(nn.Module):
         config = LoraConfig(
             r=opt.lora_rank,
             lora_alpha=opt.lora_alpha,
-            target_modules=["to_q", "to_v"],
+            target_modules=["to_q", "to_v", "query", "value"],
             lora_dropout=opt.lora_dropout,
             bias="none",
         )

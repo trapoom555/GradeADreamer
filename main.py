@@ -3,7 +3,7 @@ import numpy as np
 
 import torch
 import torchvision
-import torch.nn.functional as F
+import torchvision.transforms.functional as T
 
 from utils.cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
@@ -124,6 +124,8 @@ class Trainer:
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
 
             torchvision.utils.save_image(images, 'logs/img.jpg')
+            if self.step % 100 == 0:
+                torchvision.utils.save_image(images, f'logs/img_{self.step}.jpg')
 
             # guidance loss
             guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
@@ -176,6 +178,12 @@ if __name__ == "__main__":
 
     # override default config from cli
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
+
+    # seed
+    seed = 7
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
 
     # train
     trainer = Trainer(opt)
