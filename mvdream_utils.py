@@ -76,7 +76,6 @@ class MVDream(nn.Module):
         pred_rgb, # [B, C, H, W], B is multiples of 4
         camera, # [B, 4, 4]
         steps,
-        guidance_scale=100,
         as_latent=False,
     ):
         
@@ -94,8 +93,6 @@ class MVDream(nn.Module):
             latents = self.encode_imgs(pred_rgb_256)
 
         if self.opt.anneal_timestep and (steps <= self.opt.anneal_iters):
-            # dreamtime-like
-            # t = self.max_step - (self.max_step - self.min_step) * np.sqrt(step_ratio)
             step_ratio = min(1, steps / self.opt.anneal_iters)
             t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
             t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
@@ -114,7 +111,8 @@ class MVDream(nn.Module):
         with torch.no_grad():
             # add noise ~ N(0,1)
             noise = torch.randn_like(latents)
-            latents_noisy = self.model.q_sample(latents, t, noise)
+            with self.model.disable_adapter():
+                latents_noisy = self.model.q_sample(latents, t, noise)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
@@ -123,12 +121,12 @@ class MVDream(nn.Module):
                 pretrained_noise_pred = self.model.apply_model(latent_model_input, tt, context)
             
             pretrained_noise_pred_uncond, pretrained_noise_pred_pos = pretrained_noise_pred.chunk(2)
-            pretrained_noise_pred = pretrained_noise_pred_uncond + guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
+            pretrained_noise_pred = pretrained_noise_pred_uncond + self.opt.guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
             
         noise_pred = self.model.apply_model(latent_model_input, tt, context)
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
+        noise_pred = noise_pred_uncond + self.opt.guidance_scale * (noise_pred_pos - noise_pred_uncond)
 
         w = (1 - self.alphas[t[0]])
 
@@ -148,14 +146,16 @@ class MVDream(nn.Module):
         return loss, loss_lora
 
     def decode_latents(self, latents):
-        imgs = self.model.decode_first_stage(latents)
+        with self.model.disable_adapter():
+            imgs = self.model.decode_first_stage(latents)
         imgs = ((imgs + 1) / 2).clamp(0, 1)
         return imgs
 
     def encode_imgs(self, imgs):
         # imgs: [B, 3, 256, 256]
         imgs = 2 * imgs - 1
-        latents = self.model.get_first_stage_encoding(self.model.encode_first_stage(imgs))
+        with self.model.disable_adapter():
+            latents = self.model.get_first_stage_encoding(self.model.encode_first_stage(imgs))
         return latents # [B, 4, 32, 32]
 
     @torch.no_grad()

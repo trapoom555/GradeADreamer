@@ -10,6 +10,8 @@ outdir: logs
 mesh_format: obj
 
 ### Training
+# guidance scale
+guidance_scale: 7.5
 # guidance loss weights (0 to disable)
 lambda_sd: 0.5
 # warmup rgb supervision for image-to-3d
@@ -17,7 +19,7 @@ warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 1
 # training iterations for stage 1
-iters: 1000
+iters: 2000
 # whether to linearly anneal timestep
 anneal_timestep: True
 anneal_iters: 500
@@ -29,7 +31,7 @@ grad_clip: 1
 lora_grad_clip: 100
 
 ### Gaussian splatting
-num_pts: 5000
+num_pts: 100000
 sh_degree: 0
 position_lr_init: 0.001
 position_lr_final: 0.00002
@@ -43,7 +45,7 @@ percent_dense: 0.01
 density_start_iter: 0
 density_end_iter: 3000
 densification_interval: 50
-opacity_reset_interval: 700
+opacity_reset_interval: 300
 densify_grad_threshold: 0.01
 render_resolution: 512
 
