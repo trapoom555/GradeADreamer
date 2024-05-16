@@ -71,7 +71,6 @@ class Trainer:
 
         for _ in range(self.train_steps):
             self.step += 1
-            step_ratio = min(1, self.step / self.opt.iters)
 
             # update lr
             self.renderer.gaussians.update_learning_rate(self.step)
@@ -127,7 +126,7 @@ class Trainer:
             torchvision.utils.save_image(images, 'logs/img.jpg')
 
             # guidance loss
-            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, step_ratio=step_ratio if self.opt.anneal_timestep else None)
+            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
             loss = loss + self.opt.lambda_sd * guide_loss
 
             # lora step

@@ -75,7 +75,7 @@ class MVDream(nn.Module):
         self,
         pred_rgb, # [B, C, H, W], B is multiples of 4
         camera, # [B, 4, 4]
-        step_ratio=None,
+        steps,
         guidance_scale=100,
         as_latent=False,
     ):
@@ -93,9 +93,10 @@ class MVDream(nn.Module):
             # encode image into latents with vae, requires grad!
             latents = self.encode_imgs(pred_rgb_256)
 
-        if step_ratio is not None:
+        if self.opt.anneal_timestep and (steps <= self.opt.anneal_iters):
             # dreamtime-like
             # t = self.max_step - (self.max_step - self.min_step) * np.sqrt(step_ratio)
+            step_ratio = min(1, steps / self.opt.anneal_iters)
             t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
             t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
         else:
