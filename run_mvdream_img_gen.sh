@@ -1,0 +1,1 @@
+python mvdream_utils.py prompt="A steve minecraft" --config configs/text_mv.yaml --negative "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"

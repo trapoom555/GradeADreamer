@@ -11,6 +11,8 @@ from diffusers import DDIMScheduler
 
 from peft import LoraConfig, get_peft_model
 
+from utils.grad_helper import SpecifyGradient
+
 class MVDream(nn.Module):
     def __init__(
         self,
@@ -18,7 +20,6 @@ class MVDream(nn.Module):
         model_name='sd-v2.1-base-4view',
         ckpt_path=None,
         opt=None,
-        t_range=[0.02, 0.98],
     ):
         super().__init__()
 
@@ -34,7 +35,7 @@ class MVDream(nn.Module):
         config = LoraConfig(
             r=opt.lora_rank,
             lora_alpha=opt.lora_alpha,
-            target_modules=["to_q", "to_v"],
+            target_modules=["to_q", "to_v", "query", "value"],
             lora_dropout=opt.lora_dropout,
             bias="none",
         )
@@ -44,15 +45,19 @@ class MVDream(nn.Module):
 
         self.dtype = torch.float32
 
-        self.num_train_timesteps = 1000
-        self.min_step = int(self.num_train_timesteps * t_range[0])
-        self.max_step = int(self.num_train_timesteps * t_range[1])
-
-        self.embeddings = {}
-
         self.scheduler = DDIMScheduler.from_pretrained(
             "stabilityai/stable-diffusion-2-1-base", subfolder="scheduler", torch_dtype=self.dtype
         )
+
+        self.num_train_timesteps = self.scheduler.config.num_train_timesteps
+        self.min_step = int(self.num_train_timesteps * opt.t_sampling[0])
+        self.max_step = int(self.num_train_timesteps * opt.t_sampling[1])
+        self.min_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[0])
+        self.max_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[1])
+
+        self.embeddings = {}
+
+        self.alphas = self.scheduler.alphas_cumprod.to(self.device)
 
     @torch.no_grad()
     def get_text_embeds(self, prompts, negative_prompts):
@@ -71,8 +76,7 @@ class MVDream(nn.Module):
         self,
         pred_rgb, # [B, C, H, W], B is multiples of 4
         camera, # [B, 4, 4]
-        step_ratio=None,
-        guidance_scale=100,
+        steps,
         as_latent=False,
     ):
         
@@ -89,11 +93,17 @@ class MVDream(nn.Module):
             # encode image into latents with vae, requires grad!
             latents = self.encode_imgs(pred_rgb_256)
 
-        if step_ratio is not None:
-            # dreamtime-like
-            # t = self.max_step - (self.max_step - self.min_step) * np.sqrt(step_ratio)
-            t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
-            t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
+        if self.opt.anneal_timestep:
+            if steps <= self.opt.max_linear_anneal_iters:
+                step_ratio = min(1, steps / self.opt.max_linear_anneal_iters)
+                t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
+                t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
+            elif (steps > self.opt.max_linear_anneal_iters) and (steps <= self.opt.anneal_detail_iters):
+                # t ~ U(0.02, 0.98)
+                t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
+            else:
+                # t ~ U(0.02, 0.50)
+                t = torch.randint(self.min_step_detail, self.max_step_detail + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
 
@@ -109,7 +119,8 @@ class MVDream(nn.Module):
         with torch.no_grad():
             # add noise ~ N(0,1)
             noise = torch.randn_like(latents)
-            latents_noisy = self.model.q_sample(latents, t, noise)
+            with self.model.disable_adapter():
+                latents_noisy = self.model.q_sample(latents, t, noise)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
@@ -118,41 +129,41 @@ class MVDream(nn.Module):
                 pretrained_noise_pred = self.model.apply_model(latent_model_input, tt, context)
             
             pretrained_noise_pred_uncond, pretrained_noise_pred_pos = pretrained_noise_pred.chunk(2)
-            pretrained_noise_pred = pretrained_noise_pred_uncond + guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
+            pretrained_noise_pred = pretrained_noise_pred_uncond + self.opt.guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
             
         noise_pred = self.model.apply_model(latent_model_input, tt, context)
-        # assert torch.equal(noise_pred, pretrained_noise_pred) ## Assert error, cool ! lora makes sense
         # perform guidance (high scale from paper!)
         noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_pos - noise_pred_uncond)
+        noise_pred = noise_pred_uncond + self.opt.guidance_scale * (noise_pred_pos - noise_pred_uncond)
+
+        w = (1 - self.alphas[t[0]])
 
         ## [HERE] Noise_pred - noise for guidance
-        grad = (pretrained_noise_pred - noise_pred)
+        grad = w * (pretrained_noise_pred - noise_pred)
         grad = torch.nan_to_num(grad)
         # seems important to avoid NaN...
-        # grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
-
-        target = (latents - grad).detach()
-        loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
+        loss = SpecifyGradient.apply(latents, grad)
 
         # LoRA
         grad_lora = (noise_pred - noise)
         grad_lora = torch.nan_to_num(grad_lora)
-        # grad_lora = grad.clamp(-self.opt.lora_grad_clip, self.opt.lora_grad_clip)
-        target = (latents - grad_lora).detach()
-        loss_lora = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+        grad_lora = torch.clamp(grad_lora, -self.opt.lora_grad_clip, self.opt.lora_grad_clip)
+        loss_lora = SpecifyGradient.apply(latents, grad_lora)
 
         return loss, loss_lora
 
     def decode_latents(self, latents):
-        imgs = self.model.decode_first_stage(latents)
+        with self.model.disable_adapter():
+            imgs = self.model.decode_first_stage(latents)
         imgs = ((imgs + 1) / 2).clamp(0, 1)
         return imgs
 
     def encode_imgs(self, imgs):
         # imgs: [B, 3, 256, 256]
         imgs = 2 * imgs - 1
-        latents = self.model.get_first_stage_encoding(self.model.encode_first_stage(imgs))
+        with self.model.disable_adapter():
+            latents = self.model.get_first_stage_encoding(self.model.encode_first_stage(imgs))
         return latents # [B, 4, 32, 32]
 
     @torch.no_grad()
@@ -197,36 +208,33 @@ class MVDream(nn.Module):
 
         # Img latents -> imgs
         imgs = self.decode_latents(latents)  # [4, 3, 256, 256]
-        
-        # Img to Numpy
-        imgs = imgs.detach().cpu().permute(0, 2, 3, 1).numpy()
-        imgs = (imgs * 255).round().astype("uint8")
 
         return imgs
 
 
 if __name__ == "__main__":
     import argparse
-    import matplotlib.pyplot as plt
+    import torchvision
+    from omegaconf import OmegaConf
 
     parser = argparse.ArgumentParser()
     parser.add_argument("prompt", type=str)
     parser.add_argument("--negative", default="", type=str)
-    parser.add_argument("--steps", type=int, default=30)
-    opt = parser.parse_args()
+    parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--config", required=True, help="path to the yaml config file")
+    args, extras = parser.parse_known_args()
+    opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
 
     device = torch.device("cuda")
 
-    sd = MVDream(device)
+    # seed
+    seed = 7
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
 
-    while True:
-        imgs = sd.prompt_to_img(opt.prompt, opt.negative, num_inference_steps=opt.steps)
+    sd = MVDream(device, opt=opt)
 
-        grid = np.concatenate([
-            np.concatenate([imgs[0], imgs[1]], axis=1),
-            np.concatenate([imgs[2], imgs[3]], axis=1),
-        ], axis=0)
+    imgs = sd.prompt_to_img(args.prompt, args.negative, num_inference_steps=args.steps)
 
-        # visualize image
-        plt.imshow(grid)
-        plt.show()
+    torchvision.utils.save_image(imgs, 'logs/img_2D_gen.jpg')

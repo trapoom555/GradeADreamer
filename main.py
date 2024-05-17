@@ -3,7 +3,7 @@ import numpy as np
 
 import torch
 import torchvision
-import torch.nn.functional as F
+import torchvision.transforms.functional as T
 
 from utils.cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
@@ -71,7 +71,6 @@ class Trainer:
 
         for _ in range(self.train_steps):
             self.step += 1
-            step_ratio = min(1, self.step / self.opt.iters)
 
             # update lr
             self.renderer.gaussians.update_learning_rate(self.step)
@@ -79,7 +78,6 @@ class Trainer:
             loss = 0
 
             ### novel view (manual batch)
-            render_resolution = 128 if step_ratio < 0.3 else (256 if step_ratio < 0.6 else 512)
             images = []
             poses = []
             vers, hors, radii = [], [], []
@@ -101,7 +99,7 @@ class Trainer:
                 pose = orbit_camera(self.opt.elevation + ver, hor, self.opt.radius + radius)
                 poses.append(pose)
 
-                cur_cam = MiniCam(pose, render_resolution, render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
+                cur_cam = MiniCam(pose, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
 
                 bg_color = torch.tensor([1, 1, 1] if np.random.rand() > self.opt.invert_bg_prob else [0, 0, 0], dtype=torch.float32, device="cuda")
                 out = self.renderer.render(cur_cam, bg_color=bg_color)
@@ -114,7 +112,7 @@ class Trainer:
                     pose_i = orbit_camera(self.opt.elevation + ver, hor + 90 * view_i, self.opt.radius + radius)
                     poses.append(pose_i)
 
-                    cur_cam_i = MiniCam(pose_i, render_resolution, render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
+                    cur_cam_i = MiniCam(pose_i, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
 
                     # bg_color = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device="cuda")
                     out_i = self.renderer.render(cur_cam_i, bg_color=bg_color)
@@ -125,10 +123,12 @@ class Trainer:
             images = torch.cat(images, dim=0)
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
 
-            torchvision.utils.save_image(images, 'logs/img.jpg')
+            torchvision.utils.save_image(images, self.opt.outdir + 'img.jpg')
+            if self.step % 100 == 0:
+                torchvision.utils.save_image(images, self.opt.outdir + f'{self.step}.jpg')
 
             # guidance loss
-            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, step_ratio=step_ratio if self.opt.anneal_timestep else None)
+            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
             loss = loss + self.opt.lambda_sd * guide_loss
 
             # lora step
@@ -178,6 +178,12 @@ if __name__ == "__main__":
 
     # override default config from cli
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
+
+    # seed
+    seed = opt.seed
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
 
     # train
     trainer = Trainer(opt)
