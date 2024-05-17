@@ -123,9 +123,9 @@ class Trainer:
             images = torch.cat(images, dim=0)
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
 
-            torchvision.utils.save_image(images, 'logs/img.jpg')
+            torchvision.utils.save_image(images, self.opt.outdir + 'img.jpg')
             if self.step % 100 == 0:
-                torchvision.utils.save_image(images, f'logs/img_{self.step}.jpg')
+                torchvision.utils.save_image(images, self.opt.outdir + f'{self.step}.jpg')
 
             # guidance loss
             guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
 
     # seed
-    seed = 7
+    seed = opt.seed
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
