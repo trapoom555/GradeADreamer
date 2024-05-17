@@ -20,7 +20,6 @@ class MVDream(nn.Module):
         model_name='sd-v2.1-base-4view',
         ckpt_path=None,
         opt=None,
-        t_range=[0.02, 0.98],
     ):
         super().__init__()
 
@@ -209,36 +208,33 @@ class MVDream(nn.Module):
 
         # Img latents -> imgs
         imgs = self.decode_latents(latents)  # [4, 3, 256, 256]
-        
-        # Img to Numpy
-        imgs = imgs.detach().cpu().permute(0, 2, 3, 1).numpy()
-        imgs = (imgs * 255).round().astype("uint8")
 
         return imgs
 
 
 if __name__ == "__main__":
     import argparse
-    import matplotlib.pyplot as plt
+    import torchvision
+    from omegaconf import OmegaConf
 
     parser = argparse.ArgumentParser()
     parser.add_argument("prompt", type=str)
     parser.add_argument("--negative", default="", type=str)
-    parser.add_argument("--steps", type=int, default=30)
-    opt = parser.parse_args()
+    parser.add_argument("--steps", type=int, default=100)
+    parser.add_argument("--config", required=True, help="path to the yaml config file")
+    args, extras = parser.parse_known_args()
+    opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
 
     device = torch.device("cuda")
 
-    sd = MVDream(device)
+    # seed
+    seed = 7
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    np.random.seed(seed)
 
-    while True:
-        imgs = sd.prompt_to_img(opt.prompt, opt.negative, num_inference_steps=opt.steps)
+    sd = MVDream(device, opt=opt)
 
-        grid = np.concatenate([
-            np.concatenate([imgs[0], imgs[1]], axis=1),
-            np.concatenate([imgs[2], imgs[3]], axis=1),
-        ], axis=0)
+    imgs = sd.prompt_to_img(args.prompt, args.negative, num_inference_steps=args.steps)
 
-        # visualize image
-        plt.imshow(grid)
-        plt.show()
+    torchvision.utils.save_image(imgs, 'logs/img_2D_gen.jpg')

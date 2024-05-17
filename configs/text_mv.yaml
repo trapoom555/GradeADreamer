@@ -17,7 +17,7 @@ lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
-batch_size: 1
+batch_size: 2
 # training iterations for stage 1
 iters: 3000
 # whether to linearly anneal timestep
