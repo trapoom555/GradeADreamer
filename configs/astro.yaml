@@ -8,7 +8,8 @@ negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors
 density_thresh: 1
 
 ### Output
-outdir: logs/astro/
+outdir: logs
+outname: astro
 mesh_format: obj
 
 ### Training
@@ -19,7 +20,7 @@ lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
-batch_size: 2
+batch_size: 1
 # training iterations for stage 1
 iters: 700
 # whether to linearly anneal timestep
