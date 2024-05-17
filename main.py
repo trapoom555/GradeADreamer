@@ -1,3 +1,4 @@
+import os
 import tqdm
 import numpy as np
 
@@ -10,6 +11,7 @@ from gs_renderer import Renderer, MiniCam
 from torch.optim import Adam
 
 from mvdream_utils import MVDream
+from utils.save_model import save_model
 
 class Trainer:
     def __init__(self, opt):
@@ -123,9 +125,10 @@ class Trainer:
             images = torch.cat(images, dim=0)
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
 
-            torchvision.utils.save_image(images, self.opt.outdir + 'img.jpg')
+            path = os.path.join(self.opt.outdir, self.opt.outname)
+            torchvision.utils.save_image(images, os.path.join(path, 'img.jpg'))
             if self.step % 100 == 0:
-                torchvision.utils.save_image(images, self.opt.outdir + f'{self.step}.jpg')
+                torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
 
             # guidance loss
             guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
@@ -165,7 +168,8 @@ class Trainer:
             # do a last prune
             self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
-        # save [Implement save function]
+        # save model
+        save_model(self)
 
 
 if __name__ == "__main__":
