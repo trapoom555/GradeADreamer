@@ -71,7 +71,43 @@ class MVDream(nn.Module):
         with self.model.disable_adapter():
             embeddings = self.model.get_learned_conditioning(prompt).to(self.device)
         return embeddings
+    
+    @torch.no_grad()
+    def refine(self, pred_rgb, camera, steps=50, strength=0.8, guidance_scale=100):
+        batch_size = pred_rgb.shape[0]
+        real_batch_size = batch_size // 4
+        pred_rgb_256 = F.interpolate(pred_rgb, (256, 256), mode='bilinear', align_corners=False)
+        latents = self.encode_imgs(pred_rgb_256.to(self.dtype))
+        # latents = torch.randn((1, 4, 64, 64), device=self.device, dtype=self.dtype)
 
+        self.scheduler.set_timesteps(steps)
+        init_step = int(steps * strength)
+        latents = self.scheduler.add_noise(latents, torch.randn_like(latents), self.scheduler.timesteps[init_step])
+
+        camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
+        camera[:, 1] *= -1
+        camera = normalize_camera(camera).view(batch_size, 16)
+        camera = camera.repeat(2, 1)
+
+        embeddings = torch.cat([self.embeddings['neg'].repeat(real_batch_size, 1, 1), self.embeddings['pos'].repeat(real_batch_size, 1, 1)], dim=0)
+        context = {"context": embeddings, "camera": camera, "num_frames": 4}
+
+        for i, t in enumerate(self.scheduler.timesteps[init_step:]):
+    
+            latent_model_input = torch.cat([latents] * 2)
+            
+            tt = torch.cat([t.unsqueeze(0).repeat(batch_size)] * 2).to(self.device)
+
+            noise_pred = self.model.apply_model(latent_model_input, tt, context)
+
+            noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+            
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+        imgs = self.decode_latents(latents) # [1, 3, 512, 512]
+        return imgs
+    
     def train_step(
         self,
         pred_rgb, # [B, C, H, W], B is multiples of 4
