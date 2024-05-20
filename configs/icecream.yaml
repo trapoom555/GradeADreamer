@@ -2,14 +2,14 @@ seed: 0
 
 ### Input
 # input text prompt
-prompt: "A white suit astronaut is riding a horse, 8K, HDR"
+prompt: "An ice cream, 8K, HDR"
 negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
 # density thresh for mesh extraction
 density_thresh: 1
 
 ### Output
 outdir: logs
-outname: astro
+outname: icecream
 mesh_format: obj
 
 ### Training
