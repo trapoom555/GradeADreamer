@@ -170,6 +170,9 @@ class Trainer:
 
         # save model
         save_model(self)
+        # save pointclouds
+        path = os.path.join(self.opt.outdir, self.opt.outname)
+        self.renderer.gaussians.save_ply(os.path.join(path, f'{self.step}.ply'))
 
 
 if __name__ == "__main__":
