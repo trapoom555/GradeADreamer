@@ -3,6 +3,7 @@ import tqdm
 import numpy as np
 
 import torch
+import torchvision
 import torch.nn.functional as F
 
 from utils.cam_utils import orbit_camera, OrbitCamera
@@ -99,8 +100,8 @@ class Trainer:
                 pose = orbit_camera(self.opt.elevation + ver, hor, self.opt.radius + radius)
                 poses.append(pose)
 
-                # random render resolution
-                ssaa = min(2.0, max(0.125, 2 * np.random.random()))
+                # no random render resolution
+                ssaa = 1
                 out = self.renderer.render(pose, self.cam.perspective, render_resolution, render_resolution, ssaa=ssaa)
 
                 image = out["image"] # [H, W, 3] in [0, 1]
@@ -121,14 +122,20 @@ class Trainer:
             images = torch.cat(images, dim=0)
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
 
+            path = os.path.join(self.opt.outdir, self.opt.outname)
+            torchvision.utils.save_image(images, os.path.join(path, 'img_refine.jpg'))
+            if self.step % 100 == 0:
+                torchvision.utils.save_image(images, os.path.join(path, f'texture_{self.step}.jpg'))
+
             # guidance loss
-            strength = step_ratio * 0.15 + 0.8
+            guide_loss, lora_loss = self.guidance_sd.refine(images, poses, steps=self.step)
+            loss = loss + self.opt.lambda_sd * guide_loss
 
-            # loss = loss + self.opt.lambda_sd * self.guidance_sd.train_step(images, poses, step_ratio)
-            refined_images = self.guidance_sd.refine(images, poses, strength=strength).float()
-            refined_images = F.interpolate(refined_images, (render_resolution, render_resolution), mode="bilinear", align_corners=False)
-            loss = loss + self.opt.lambda_sd * F.mse_loss(images, refined_images)
-
+            # lora step
+            lora_loss.backward(retain_graph=True)
+            self.lora_optimizer.step()
+            self.lora_optimizer.zero_grad()
+            
             # optimize step
             loss.backward()
             self.optimizer.step()
