@@ -60,7 +60,7 @@ render_resolution: 512
 
 ### Textured Mesh
 geom_lr: 0.0001
-texture_lr: 0.01
+texture_lr: 0.005
 
 ### Camera
 H: 800
@@ -84,4 +84,4 @@ lora_dropout: 0.0
 ### Step 2
 force_cuda_rast: True
 train_geo: False
-iters_refine: 700
+iters_refine: 1500
