@@ -100,11 +100,19 @@ dependencies:
       - diff-gaussian-rasterization==0.0.0
       - diffusers==0.27.2
       - einops==0.8.0
+      - executing==2.0.1
       - fsspec==2024.3.1
       - ftfy==6.2.0
       - huggingface-hub==0.23.0
+      - imageio==2.34.1
+      - imageio-ffmpeg==0.4.9
       - importlib-metadata==7.1.0
+      - joblib==1.4.2
+      - kiui==0.2.9
+      - lazy-loader==0.4
       - mvdream==0.0.1
+      - nvdiffrast==0.3.1
+      - objprint==0.2.3
       - omegaconf==2.3.0
       - open-clip-torch==2.24.0
       - opencv-python==4.9.0.80
@@ -113,17 +121,22 @@ dependencies:
       - plyfile==1.0.3
       - protobuf==5.26.1
       - psutil==5.9.8
+      - pymcubes==0.1.4
       - pymeshlab==2023.12.post1
       - pyyaml==6.0.1
       - regex==2024.5.10
       - safetensors==0.4.3
+      - scikit-learn==1.4.2
       - scipy==1.13.0
       - sentencepiece==0.2.0
       - simple-knn==0.0.0
+      - threadpoolctl==3.5.0
       - timm==0.9.16
       - tokenizers==0.19.1
       - tqdm==4.66.4
       - transformers==4.40.2
       - trimesh==4.3.2
+      - varname==0.13.1
       - wcwidth==0.2.13
+      - xatlas==0.0.9
       - zipp==3.18.1

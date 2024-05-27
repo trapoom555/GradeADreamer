@@ -7,6 +7,9 @@ negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors
 # density thresh for mesh extraction
 density_thresh: 1
 
+### input mesh for stage 2 (auto-search from stage 1 output path if None)
+mesh:
+
 ### Output
 outdir: logs
 outname: icecream
@@ -57,7 +60,7 @@ render_resolution: 512
 
 ### Textured Mesh
 geom_lr: 0.0001
-texture_lr: 0.2
+texture_lr: 0.005
 
 ### Camera
 H: 800
@@ -77,3 +80,8 @@ lora_lr: 0.0001
 lora_rank: 8
 lora_alpha: 32
 lora_dropout: 0.0
+
+### Step 2
+force_cuda_rast: True
+train_geo: False
+iters_refine: 1500

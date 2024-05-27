@@ -54,6 +54,8 @@ class MVDream(nn.Module):
         self.max_step = int(self.num_train_timesteps * opt.t_sampling[1])
         self.min_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[0])
         self.max_step_detail = int(self.num_train_timesteps * opt.detail_t_sampling[1])
+        self.min_step_refine = int(self.num_train_timesteps * 0.02)
+        self.max_step_refine = int(self.num_train_timesteps * 0.30)
 
         self.embeddings = {}
 
@@ -71,7 +73,81 @@ class MVDream(nn.Module):
         with self.model.disable_adapter():
             embeddings = self.model.get_learned_conditioning(prompt).to(self.device)
         return embeddings
+    
+    def refine(
+        self,
+        pred_rgb, # [B, C, H, W], B is multiples of 4
+        camera, # [B, 4, 4]
+        steps,
+        as_latent=False,
+    ):
+        batch_size = pred_rgb.shape[0]
+        real_batch_size = batch_size // 4
+        # interp to 256x256 to be fed into vae.
+        pred_rgb_256 = F.interpolate(pred_rgb, (256, 256), mode="bilinear", align_corners=False)
+        # encode image into latents with vae, requires grad!
+        latents = self.encode_imgs(pred_rgb_256)
 
+        if self.opt.anneal_timestep:
+            if steps <= self.opt.max_linear_anneal_iters:
+                step_ratio = min(1, steps / self.opt.max_linear_anneal_iters)
+                t = np.round((1 - step_ratio) * self.num_train_timesteps).clip(self.min_step, self.max_step)
+                t = torch.full((batch_size,), t, dtype=torch.long, device=self.device)
+            elif (steps > self.opt.max_linear_anneal_iters) and (steps <= self.opt.anneal_detail_iters):
+                # t ~ U(0.02, 0.98)
+                t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
+            else:
+                # t ~ U(0.02, 0.50)
+                t = torch.randint(self.min_step_detail, self.max_step_detail + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
+        else:
+            t = torch.randint(self.min_step, self.max_step + 1, (real_batch_size,), dtype=torch.long, device=self.device).repeat(4)
+            
+        camera = camera[:, [0, 2, 1, 3]] # to blender convention (flip y & z axis)
+        camera[:, 1] *= -1
+        camera = normalize_camera(camera).view(batch_size, 16)
+        camera = camera.repeat(2, 1)
+
+        embeddings = torch.cat([self.embeddings['neg'].repeat(real_batch_size, 1, 1), self.embeddings['pos'].repeat(real_batch_size, 1, 1)], dim=0)
+        context = {"context": embeddings, "camera": camera, "num_frames": 4}
+
+        # predict the noise residual with unet, NO grad!
+        with torch.no_grad():
+            # add noise ~ N(0,1)
+            noise = torch.randn_like(latents)
+            with self.model.disable_adapter():
+                latents_noisy = self.model.q_sample(latents, t, noise)
+            # pred noise
+            latent_model_input = torch.cat([latents_noisy] * 2)
+            tt = torch.cat([t] * 2)
+
+            with self.model.disable_adapter():
+                pretrained_noise_pred = self.model.apply_model(latent_model_input, tt, context)
+            
+            pretrained_noise_pred_uncond, pretrained_noise_pred_pos = pretrained_noise_pred.chunk(2)
+            pretrained_noise_pred = pretrained_noise_pred_uncond + self.opt.guidance_scale * (pretrained_noise_pred_pos - pretrained_noise_pred_uncond)
+            
+        noise_pred = self.model.apply_model(latent_model_input, tt, context)
+        # perform guidance (high scale from paper!)
+        noise_pred_uncond, noise_pred_pos = noise_pred.chunk(2)
+        noise_pred = noise_pred_uncond + self.opt.guidance_scale * (noise_pred_pos - noise_pred_uncond)
+
+        w = (1 - self.alphas[t[0]])
+
+        ## [HERE] Noise_pred - noise for guidance
+        grad = w * (pretrained_noise_pred - noise_pred)
+        grad = torch.nan_to_num(grad)
+        # seems important to avoid NaN...
+        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
+        loss = SpecifyGradient.apply(latents, grad)
+
+        # LoRA
+        grad_lora = (noise_pred - noise)
+        grad_lora = torch.nan_to_num(grad_lora)
+        grad_lora = torch.clamp(grad_lora, -self.opt.lora_grad_clip, self.opt.lora_grad_clip)
+        loss_lora = SpecifyGradient.apply(latents, grad_lora)
+
+        return loss, loss_lora
+    
     def train_step(
         self,
         pred_rgb, # [B, C, H, W], B is multiples of 4
