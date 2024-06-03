@@ -33,7 +33,6 @@ class Trainer:
 
         # training stuff
         self.optimizer = None
-        self.lora_optimizer = None
         self.step = 0
         self.train_steps = 1  # steps per rendering loop
         
@@ -59,8 +58,6 @@ class Trainer:
         print(f"[INFO] loading MVDream...")
         self.guidance_sd = MVDream(self.device, opt=self.opt)
         print(f"[INFO] loaded MVDream!")
-            
-        self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=self.opt.lora_lr)
 
         # prepare embeddings
         with torch.no_grad():
@@ -131,13 +128,8 @@ class Trainer:
                 torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
 
             # guidance loss
-            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
+            guide_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
             loss = loss + self.opt.lambda_sd * guide_loss
-
-            # lora step
-            lora_loss.backward(retain_graph=True)
-            self.lora_optimizer.step()
-            self.lora_optimizer.zero_grad()
             
             # optimize step
             loss.backward()
@@ -166,13 +158,11 @@ class Trainer:
             for i in tqdm.trange(iters):
                 self.train_step()
             # do a last prune
-            self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
+            # self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
-        # save model
-        save_model(self)
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
-        self.renderer.gaussians.save_ply(os.path.join(path, f'{self.step}.ply'))
+        self.renderer.gaussians.save_ply(os.path.join(path, 'prior.ply'))
 
 
 if __name__ == "__main__":

@@ -123,13 +123,8 @@ class Trainer:
                 torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
 
             # guidance loss
-            guide_loss, lora_loss = self.guidance_sd.train_step(images, steps=self.step)
+            guide_loss = self.guidance_sd.train_step(images, steps=self.step)
             loss = loss + self.opt.lambda_sd * guide_loss
-
-            # lora step
-            lora_loss.backward(retain_graph=True)
-            self.lora_optimizer.step()
-            self.lora_optimizer.zero_grad()
             
             # optimize step
             loss.backward()

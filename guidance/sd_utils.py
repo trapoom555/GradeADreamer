@@ -26,22 +26,12 @@ class StableDiffusion(nn.Module):
         self,
         device,
         model_name='stabilityai/stable-diffusion-2-1-base',
-        ckpt_path=None,
         opt=None,
     ):
         super().__init__()
 
         self.opt = opt
         self.device = device
-        
-        # LoRA
-        config = LoraConfig(
-            r=opt.lora_rank,
-            lora_alpha=opt.lora_alpha,
-            target_modules=["to_q", "to_v", "query", "value"],
-            lora_dropout=opt.lora_dropout,
-            bias="none",
-        )
 
         self.dtype = torch.float32
 
@@ -56,9 +46,6 @@ class StableDiffusion(nn.Module):
         self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
         self.model = pipe.unet
-
-        self.model = get_peft_model(self.model, config)
-        self.model.print_trainable_parameters()
 
         self.scheduler = DDIMScheduler.from_pretrained(
             model_name, subfolder="scheduler", torch_dtype=self.dtype
@@ -130,51 +117,55 @@ class StableDiffusion(nn.Module):
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (batch_size,), dtype=torch.long, device=self.device)
 
-        embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
-
-        # predict the noise residual with unet, NO grad!
         with torch.no_grad():
-            # add noise ~ N(0,1)
+            # w(t), sigma_t^2
+            w = (1 - self.alphas[t]).view(batch_size, 1, 1, 1)
+
+            # predict the noise residual with unet, NO grad!
+            # add noise
             noise = torch.randn_like(latents)
-            with self.model.disable_adapter():
-                latents_noisy = self.scheduler.add_noise(latents, noise, t)
+            latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
 
-            with self.model.disable_adapter():
-                pretrained_noise_pred = self.model(latent_model_input, tt, encoder_hidden_states=embeddings).sample
+            hors = None
+            if hors is None:
+                embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
+            else:
+                def _get_dir_ind(h):
+                    if abs(h) < 60: return 'front'
+                    elif abs(h) < 120: return 'side'
+                    else: return 'back'
 
-            pretrained_noise_pred_cond, pretrained_noise_pred_uncond = pretrained_noise_pred.chunk(2)
-            pretrained_noise_pred = pretrained_noise_pred_uncond + self.opt.guidance_scale * (pretrained_noise_pred_cond - pretrained_noise_pred_uncond)
-            
-        noise_pred = self.model(latent_model_input, tt, encoder_hidden_states=embeddings).sample
-        # perform guidance (high scale from paper!)
-        noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + self.opt.guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                embeddings = torch.cat([self.embeddings[_get_dir_ind(h)] for h in hors] + [self.embeddings['neg'].expand(batch_size, -1, -1)])
 
-        w = (1 - self.alphas[t[0]])
+            noise_pred = self.model(
+                latent_model_input, tt, encoder_hidden_states=embeddings
+            ).sample
 
-        ## [HERE] Noise_pred - noise for guidance
-        grad = w * (pretrained_noise_pred - noise_pred)
-        grad = torch.nan_to_num(grad)
-        # seems important to avoid NaN...
-        grad = grad.clamp(-self.opt.grad_clip, self.opt.grad_clip)
-        loss = SpecifyGradient.apply(latents, grad)
+            # perform guidance (high scale from paper!)
+            noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.opt.guidance_scale * (
+                noise_pred_cond - noise_pred_uncond
+            )
 
-        # LoRA
-        grad_lora = (noise_pred - noise)
-        grad_lora = torch.nan_to_num(grad_lora)
-        grad_lora = torch.clamp(grad_lora, -self.opt.lora_grad_clip, self.opt.lora_grad_clip)
-        loss_lora = SpecifyGradient.apply(latents, grad_lora)
+            grad = w * (noise_pred - noise)
+            grad = torch.nan_to_num(grad)
 
-        return loss, loss_lora
+            # seems important to avoid NaN...
+            # grad = grad.clamp(-1, 1)
+
+        target = (latents - grad).detach()
+        loss = 0.5 * F.mse_loss(latents.float(), target, reduction='sum') / latents.shape[0]
+
+        return loss
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        with self.model.disable_adapter():
-            imgs = self.vae.decode(latents).sample
+        # with self.model.disable_adapter():
+        imgs = self.vae.decode(latents).sample
 
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
 
@@ -187,7 +178,7 @@ class StableDiffusion(nn.Module):
 
         posterior = self.vae.encode(imgs).latent_dist
 
-        with self.model.disable_adapter():
-            latents = posterior.sample() * self.vae.config.scaling_factor
+        #with self.model.disable_adapter():
+        latents = posterior.sample() * self.vae.config.scaling_factor
 
         return latents
