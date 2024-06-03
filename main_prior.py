@@ -10,7 +10,7 @@ from utils.cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
 from torch.optim import Adam
 
-from guidance.sd_utils import StableDiffusion
+from guidance.mvdream_utils import MVDream
 from utils.save_model import save_model
 
 class Trainer:
@@ -43,13 +43,8 @@ class Trainer:
         if self.opt.negative_prompt is not None:
             self.negative_prompt = self.opt.negative_prompt
 
-        # override if provide a checkpoint
-        if self.opt.load is not None:
-            print(f"Loaded Checkpoint from {self.opt.load}")
-            self.renderer.initialize(self.opt.load)            
-        else:
-            # initialize gaussians to a blob
-            self.renderer.initialize(num_pts=self.opt.num_pts)
+        # initialize gaussians to a blob
+        self.renderer.initialize(num_pts=self.opt.num_pts)
 
     def prepare_train(self):
         self.step = 0
@@ -61,9 +56,9 @@ class Trainer:
         self.optimizer = self.renderer.gaussians.optimizer
 
         # lazy load guidance model
-        print(f"[INFO] loading Stable Diffusion...")
-        self.guidance_sd = StableDiffusion(self.device, opt=self.opt)
-        print(f"[INFO] loaded Stable Diffusion!")
+        print(f"[INFO] loading MVDream...")
+        self.guidance_sd = MVDream(self.device, opt=self.opt)
+        print(f"[INFO] loaded MVDream!")
             
         self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=self.opt.lora_lr)
 
@@ -108,11 +103,24 @@ class Trainer:
 
                 cur_cam = MiniCam(pose, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
 
-                bg_color = torch.tensor([1, 1, 1] if np.random.rand() > self.opt.invert_bg_prob else [0, 0, 0], dtype=torch.float32, device=self.device)
+                bg_color = torch.tensor([1, 1, 1] if np.random.rand() > self.opt.invert_bg_prob else [0, 0, 0], dtype=torch.float32, device="cuda")
                 out = self.renderer.render(cur_cam, bg_color=bg_color)
 
                 image = out["image"].unsqueeze(0) # [1, 3, H, W] in [0, 1]
                 images.append(image)
+
+                # mvdream 4 views
+                for view_i in range(1, 4):
+                    pose_i = orbit_camera(self.opt.elevation + ver, hor + 90 * view_i, self.opt.radius + radius)
+                    poses.append(pose_i)
+
+                    cur_cam_i = MiniCam(pose_i, self.opt.render_resolution, self.opt.render_resolution, self.cam.fovy, self.cam.fovx, self.cam.near, self.cam.far)
+
+                    # bg_color = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float32, device="cuda")
+                    out_i = self.renderer.render(cur_cam_i, bg_color=bg_color)
+
+                    image = out_i["image"].unsqueeze(0) # [1, 3, H, W] in [0, 1]
+                    images.append(image)
                     
             images = torch.cat(images, dim=0)
             poses = torch.from_numpy(np.stack(poses, axis=0)).to(self.device)
@@ -123,7 +131,7 @@ class Trainer:
                 torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
 
             # guidance loss
-            guide_loss, lora_loss = self.guidance_sd.train_step(images, steps=self.step)
+            guide_loss, lora_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
             loss = loss + self.opt.lambda_sd * guide_loss
 
             # lora step

@@ -9,6 +9,7 @@ density_thresh: 1
 
 ### input mesh for stage 2 (auto-search from stage 1 output path if None)
 mesh:
+load: logs/astro_v0/700.ply
 
 ### Output
 outdir: logs
@@ -43,7 +44,7 @@ lora_grad_clip: 100
 num_pts: 7000
 sh_degree: 0
 position_lr_init: 0.001
-position_lr_final: 0.0000016
+position_lr_final: 0.001
 position_lr_delay_mult: 0.02
 position_lr_max_steps: 500
 feature_lr: 0.01

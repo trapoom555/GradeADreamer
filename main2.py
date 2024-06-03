@@ -10,7 +10,7 @@ from utils.cam_utils import orbit_camera, OrbitCamera
 from mesh_renderer import Renderer
 from torch.optim import Adam
 
-from mvdream_utils import MVDream
+from guidance.mvdream_utils import MVDream
 
 class Trainer:
     def __init__(self, opt):
