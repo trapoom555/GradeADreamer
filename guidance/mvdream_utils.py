@@ -3,15 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mvdream.camera_utils import get_camera, convert_opengl_to_blender, normalize_camera
+from mvdream.camera_utils import normalize_camera
 from mvdream.model_zoo import build_model
-from mvdream.ldm.models.diffusion.ddim import DDIMSampler
 
 from diffusers import DDIMScheduler
-
-from peft import LoraConfig, get_peft_model
-
-from utils.grad_helper import SpecifyGradient
 
 class MVDream(nn.Module):
     def __init__(
@@ -108,8 +103,6 @@ class MVDream(nn.Module):
 
         grad = (noise_pred - noise)
         grad = torch.nan_to_num(grad)
-
-        # seems important to avoid NaN...
         # grad = grad.clamp(-1, 1)
 
         target = (latents - grad).detach()

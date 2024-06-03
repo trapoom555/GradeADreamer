@@ -4,14 +4,11 @@ import numpy as np
 
 import torch
 import torchvision
-import torchvision.transforms.functional as T
 
 from utils.cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
-from torch.optim import Adam
 
 from guidance.mvdream_utils import MVDream
-from utils.save_model import save_model
 
 class Trainer:
     def __init__(self, opt):
@@ -125,7 +122,7 @@ class Trainer:
             path = os.path.join(self.opt.outdir, self.opt.outname)
             torchvision.utils.save_image(images, os.path.join(path, 'img.jpg'))
             if self.step % 100 == 0:
-                torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
+                torchvision.utils.save_image(images, os.path.join(path, f'prior_{self.step}.jpg'))
 
             # guidance loss
             guide_loss = self.guidance_sd.train_step(images, poses, steps=self.step)
@@ -157,8 +154,6 @@ class Trainer:
             self.prepare_train()
             for i in tqdm.trange(iters):
                 self.train_step()
-            # do a last prune
-            # self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)

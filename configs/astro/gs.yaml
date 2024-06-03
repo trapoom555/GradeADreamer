@@ -2,15 +2,10 @@ seed: 0
 
 ### Input
 # input text prompt
-prompt: "A DSLR photo of an astronaut riding a horse, asset, no background, no stand"
+prompt: "A DSLR photo of an astronaut riding a horse, no background, no stand"
 negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
 # density thresh for mesh extraction
 density_thresh: 1
-
-### input mesh for stage 2 (auto-search from stage 1 output path if None)
-mesh:
-#load:
-load: logs/astro/prior.ply
 
 ### Output
 outdir: logs
@@ -27,7 +22,7 @@ warmup_rgb_loss: True
 # training batch size per iter
 batch_size: 2
 # training iterations for stage 1
-iters: 500
+iters: 700
 # whether to linearly anneal timestep
 anneal_timestep: True
 max_linear_anneal_iters: 200
@@ -38,11 +33,8 @@ detail_t_sampling: [0.02, 0.50]
 invert_bg_prob: 0.5
 # gradient clipping
 grad_clip: 1
-# LoRA gradient clipping
-lora_grad_clip: 100
 
 ### Gaussian splatting
-num_pts: 5000
 sh_degree: 0
 position_lr_init: 0.001
 position_lr_final: 0.0000016
@@ -60,10 +52,6 @@ opacity_reset_interval: 300
 densify_grad_threshold: 0.01
 render_resolution: 512
 
-### Textured Mesh
-geom_lr: 0.0001
-texture_lr: 0.005
-
 ### Camera
 H: 800
 W: 800
@@ -76,14 +64,3 @@ fovy: 49.1
 min_ver: -30
 # training camera max elevation
 max_ver: 30
-
-### LoRA
-lora_lr: 0.0001
-lora_rank: 8
-lora_alpha: 32
-lora_dropout: 0.0
-
-### Step 2
-force_cuda_rast: True
-train_geo: False
-iters_refine: 1500

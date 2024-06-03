@@ -2,19 +2,14 @@ seed: 0
 
 ### Input
 # input text prompt
-prompt: "A DSLR photo of an astronaut riding a horse, asset, no background, no stand"
+prompt: "A DSLR photo of an astronaut riding a horse, no background, no stand"
 negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
 # density thresh for mesh extraction
 density_thresh: 1
 
-### input mesh for stage 2 (auto-search from stage 1 output path if None)
-mesh:
-load:
-
 ### Output
 outdir: logs
 outname: astro
-mesh_format: obj
 
 ### Training
 # guidance scale
@@ -24,19 +19,17 @@ lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d
 warmup_rgb_loss: True
 # training batch size per iter
-batch_size: 2
+batch_size: 1
 # training iterations for stage 1
-iters: 300
+iters: 500
 t_sampling: [0.02, 0.98]
 # prob to invert background color during training (0 = always black, 1 = always white)
 invert_bg_prob: 0.5
 # gradient clipping
 grad_clip: 1
-# LoRA gradient clipping
-lora_grad_clip: 100
 
 ### Gaussian splatting
-num_pts: 5000
+num_pts: 6000
 sh_degree: 0
 position_lr_init: 0.001
 position_lr_final: 0.0000016
@@ -53,10 +46,6 @@ densification_interval: 55
 opacity_reset_interval: 500
 densify_grad_threshold: 0.01
 render_resolution: 512
-
-### Textured Mesh
-geom_lr: 0.0001
-texture_lr: 0.005
 
 ### Camera
 H: 800

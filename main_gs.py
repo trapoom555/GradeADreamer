@@ -4,11 +4,9 @@ import numpy as np
 
 import torch
 import torchvision
-import torchvision.transforms.functional as T
 
 from utils.cam_utils import orbit_camera, OrbitCamera
 from gs_renderer import Renderer, MiniCam
-from torch.optim import Adam
 
 from guidance.sd_utils import StableDiffusion
 from utils.save_model import save_model
@@ -33,7 +31,6 @@ class Trainer:
 
         # training stuff
         self.optimizer = None
-        self.lora_optimizer = None
         self.step = 0
         self.train_steps = 1  # steps per rendering loop
         
@@ -44,12 +41,10 @@ class Trainer:
             self.negative_prompt = self.opt.negative_prompt
 
         # override if provide a checkpoint
-        if self.opt.load is not None:
-            print(f"Loaded Checkpoint from {self.opt.load}")
-            self.renderer.initialize(self.opt.load)            
-        else:
-            # initialize gaussians to a blob
-            self.renderer.initialize(num_pts=self.opt.num_pts)
+        path = os.path.join(self.opt.outdir, self.opt.outname)
+        load_path = os.path.join(path, 'prior.ply')
+        print(f"Loaded Checkpoint from {load_path}")
+        self.renderer.initialize(load_path)
 
     def prepare_train(self):
         self.step = 0
@@ -64,8 +59,6 @@ class Trainer:
         print(f"[INFO] loading Stable Diffusion...")
         self.guidance_sd = StableDiffusion(self.device, opt=self.opt)
         print(f"[INFO] loaded Stable Diffusion!")
-            
-        self.lora_optimizer = Adam(self.guidance_sd.parameters(), lr=self.opt.lora_lr)
 
         # prepare embeddings
         with torch.no_grad():
@@ -120,7 +113,7 @@ class Trainer:
             path = os.path.join(self.opt.outdir, self.opt.outname)
             torchvision.utils.save_image(images, os.path.join(path, 'img.jpg'))
             if self.step % 100 == 0:
-                torchvision.utils.save_image(images, os.path.join(path, f'{self.step}.jpg'))
+                torchvision.utils.save_image(images, os.path.join(path, f'gs_{self.step}.jpg'))
 
             # guidance loss
             guide_loss = self.guidance_sd.train_step(images, steps=self.step)
@@ -159,7 +152,7 @@ class Trainer:
         save_model(self)
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
-        self.renderer.gaussians.save_ply(os.path.join(path, f'{self.step}.ply'))
+        self.renderer.gaussians.save_ply(os.path.join(path, f'gs.ply'))
 
 
 if __name__ == "__main__":

@@ -25,19 +25,19 @@ pip install git+https://github.com/ashawkey/kiuikit
 
 ## Run (Entire pipeline)
 ```bash
-./run.sh -opt icecream
+./run.sh -opt astro
 ```
 
 ## Run each stage separately
 ```bash
-# Stage 1 : Gaussian Splatting with VSD
-python main.py --config configs/icecream.yaml
+# Stage 1 : Create Prior Point Clouds [MVDream + SDS]
+python main_prior.py --config configs/astro/prior.yaml
 
-# Stage 2 : Texture Optimization with VSD
-python main2.py --config configs/icecream.yaml
+# Stage 2 : Gaussian Splatting Optimization [Stable Diffusion + SDS]
+python main_gs.py --config configs/astro/gs.yaml
 ```
 
 ## Export to VDO
 ```bash
-kire logs/icecream/icecream_refined_mesh.obj --save_video logs/icecream_output_vdo.mp4 --wogui
+kire logs/astro/astro_refined_mesh.obj --save_video logs/astro_output_vdo.mp4 --wogui
 ```

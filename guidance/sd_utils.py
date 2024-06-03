@@ -2,24 +2,11 @@ from diffusers import (
     DDIMScheduler,
     StableDiffusionPipeline,
 )
-from diffusers.utils.import_utils import is_xformers_available
-
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils.grad_helper import SpecifyGradient
-
-from peft import LoraConfig, get_peft_model
-
-
-def seed_everything(seed):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = True
-
 
 class StableDiffusion(nn.Module):
     def __init__(
@@ -129,16 +116,7 @@ class StableDiffusion(nn.Module):
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
 
-            hors = None
-            if hors is None:
-                embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
-            else:
-                def _get_dir_ind(h):
-                    if abs(h) < 60: return 'front'
-                    elif abs(h) < 120: return 'side'
-                    else: return 'back'
-
-                embeddings = torch.cat([self.embeddings[_get_dir_ind(h)] for h in hors] + [self.embeddings['neg'].expand(batch_size, -1, -1)])
+            embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
 
             noise_pred = self.model(
                 latent_model_input, tt, encoder_hidden_states=embeddings
@@ -152,8 +130,6 @@ class StableDiffusion(nn.Module):
 
             grad = w * (noise_pred - noise)
             grad = torch.nan_to_num(grad)
-
-            # seems important to avoid NaN...
             # grad = grad.clamp(-1, 1)
 
         target = (latents - grad).detach()
@@ -163,22 +139,15 @@ class StableDiffusion(nn.Module):
 
     def decode_latents(self, latents):
         latents = 1 / self.vae.config.scaling_factor * latents
-
-        # with self.model.disable_adapter():
         imgs = self.vae.decode(latents).sample
-
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
 
         return imgs
 
     def encode_imgs(self, imgs):
         # imgs: [B, 3, H, W]
-
         imgs = 2 * imgs - 1
-
         posterior = self.vae.encode(imgs).latent_dist
-
-        #with self.model.disable_adapter():
         latents = posterior.sample() * self.vae.config.scaling_factor
 
         return latents
