@@ -45,5 +45,5 @@ python main_appearance.py --config configs/astro/appearance.json
 
 ## Export to VDO
 ```bash
-kire logs/astro/astro_refined_mesh.obj --save_video logs/astro_output_vdo.mp4 --wogui
+kire logs/astro/astro_appearance/dmtet_mesh/mesh.obj --save_video logs/astro/astro_output_vdo.mp4 --wogui
 ```
