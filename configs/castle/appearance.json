@@ -1,8 +1,8 @@
 {
     "seed" : 0,
-    "text" : "A DSLR photo of an astronaut riding a horse, no background, no stand",
-    "base_mesh": "logs/astro/astro_mesh.obj",
-    "out_dir": "astro/astro_appearance",
+    "text" : "A highly detailed sand castle",
+    "base_mesh": "logs/castle/castle_mesh.obj",
+    "out_dir": "castle/castle_appearance",
     "random_textures": true,
     "iter": 2000,
     "batch": 4,

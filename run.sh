@@ -55,6 +55,8 @@ echo "[INFO] Running Stage 1... : Create Prior Point Clouds [MVDream + SDS]"
 python main_prior.py --config configs/$OPTION/prior.yaml
 echo "[INFO] Running Stage 2... : Gaussian Splatting Optimization [Stable Diffusion + SDS]"
 python main_gs.py --config configs/$OPTION/gs.yaml
+echo "[INFO] Running Stage 3... : Texture Optimization [Stable Diffusion + SDS]"
+python main_appearance.py --config configs/$OPTION/appearance.json
 echo "[INFO] Saving VDO..."
-kire logs/$OPTION/${OPTION}_mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
+kire logs/$OPTION/${OPTION}_appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
 echo "Finished : the saved VDO is located at logs/$OPTION/${OPTION}_output_vdo.mp4"
