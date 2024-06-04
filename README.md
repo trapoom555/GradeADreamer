@@ -5,7 +5,7 @@ Text to 3D generation
 ```bash
 # from yml file
 conda env create --file=environment.yml
-conda activate gd
+conda activate GradeADreamer
 
 # Gaussian Splatting
 pip install git+https://github.com/ashawkey/diff-gaussian-rasterization
@@ -19,25 +19,31 @@ pip install git+https://github.com/bytedance/MVDream
 # nvdiffrast
 pip install git+https://github.com/NVlabs/nvdiffrast/
 
+# tiny-cuda-nn
+pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+
 # kiuikit
 pip install git+https://github.com/ashawkey/kiuikit
 ```
 
 ## Run (Entire pipeline)
 ```bash
-./run.sh -opt icecream
+./run.sh -opt astro
 ```
 
 ## Run each stage separately
 ```bash
-# Stage 1 : Gaussian Splatting with VSD
-python main.py --config configs/icecream.yaml
+# Stage 1 : Create Prior Point Clouds [MVDream + SDS]
+python main_prior.py --config configs/astro/prior.yaml
 
-# Stage 2 : Texture Optimization with VSD
-python main2.py --config configs/icecream.yaml
+# Stage 2 : Gaussian Splatting Optimization [Stable Diffusion + SDS]
+python main_gs.py --config configs/astro/gs.yaml
+
+# Stage 3 : Texture Optimization [Stable Diffusion + SDS]"
+python main_appearance.py --config configs/astro/appearance.json
 ```
 
 ## Export to VDO
 ```bash
-kire logs/icecream/icecream_refined_mesh.obj --save_video logs/icecream_output_vdo.mp4 --wogui
+kire logs/astro/astro_refined_mesh.obj --save_video logs/astro_output_vdo.mp4 --wogui
 ```

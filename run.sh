@@ -38,10 +38,25 @@ done
 # Echo the stored value
 echo "The value of the option is: $OPTION"
 
-echo "Running Stage 1... : Gaussian Splatting with VSD"
-python main.py --config configs/$OPTION.yaml
-echo "Running Stage 2... : Gaussian Splatting with VSD"
-python main2.py --config configs/$OPTION.yaml
-echo "Saving VDO : Gaussian Splatting with VSD"
-kire logs/$OPTION/${OPTION}_refined_mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
+FOLDER=logs/$OPTION
+
+# Check if the folder exists
+if [ -d "$FOLDER" ]; then
+    # Delete the folder if it exists
+    rm -rf "$FOLDER"
+    echo "Deleted existing folder: $FOLDER"
+fi
+
+# Recreate the folder
+mkdir -p "$FOLDER"
+echo "Recreated folder: $FOLDER"
+
+echo "[INFO] Running Stage 1... : Create Prior Point Clouds [MVDream + SDS]"
+python main_prior.py --config configs/$OPTION/prior.yaml
+echo "[INFO] Running Stage 2... : Gaussian Splatting Optimization [Stable Diffusion + SDS]"
+python main_gs.py --config configs/$OPTION/gs.yaml
+echo "[INFO] Running Stage 3... : Texture Optimization [Stable Diffusion + SDS]"
+python main_appearance.py --config configs/$OPTION/appearance.json
+echo "[INFO] Saving VDO..."
+kire logs/$OPTION/${OPTION}_appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
 echo "Finished : the saved VDO is located at logs/$OPTION/${OPTION}_output_vdo.mp4"
