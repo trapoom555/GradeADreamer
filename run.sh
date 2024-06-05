@@ -51,7 +51,7 @@ fi
 mkdir -p "$FOLDER"
 echo "Recreated folder: $FOLDER"
 
-TIME_REPORT="time_report_${OPTION}.txt"
+TIME_REPORT="logs/${OPTION}/time_report.txt"
 
 # Clear the output file if it exists
 > $TIME_REPORT
