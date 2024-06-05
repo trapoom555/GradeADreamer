@@ -1,0 +1,66 @@
+seed: 0
+
+### Input
+# input text prompt
+prompt: "A plate piled high with chocolate chip cookies, no background, no stand"
+negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
+# density thresh for mesh extraction
+density_thresh: 1
+
+### Output
+outdir: logs
+outname: cookies
+mesh_format: obj
+
+### Training
+# guidance scale
+guidance_scale: 100
+# guidance loss weights (0 to disable)
+lambda_sd: 0.1
+# warmup rgb supervision for image-to-3d
+warmup_rgb_loss: True
+# training batch size per iter
+batch_size: 2
+# training iterations for stage 1
+iters: 700
+# whether to linearly anneal timestep
+anneal_timestep: True
+max_linear_anneal_iters: 200
+t_sampling: [0.02, 0.98]
+anneal_detail_iters: 300
+detail_t_sampling: [0.02, 0.50]
+# prob to invert background color during training (0 = always black, 1 = always white)
+invert_bg_prob: 0.5
+# gradient clipping
+grad_clip: 1
+
+### Gaussian splatting
+sh_degree: 0
+position_lr_init: 0.001
+position_lr_final: 0.0000016
+position_lr_delay_mult: 0.02
+position_lr_max_steps: 300
+feature_lr: 0
+opacity_lr: 0.05
+scaling_lr: 0.005
+rotation_lr: 0.001
+percent_dense: 0.01
+density_start_iter: 0
+density_end_iter: 3000
+densification_interval: 50
+opacity_reset_interval: 300
+densify_grad_threshold: 0.01
+render_resolution: 512
+
+### Camera
+H: 800
+W: 800
+elevation: 0
+# training camera radius
+radius: 2.5
+# training camera fovy
+fovy: 49.1
+# training camera min elevation
+min_ver: -30
+# training camera max elevation
+max_ver: 30

@@ -2,14 +2,14 @@ seed: 0
 
 ### Input
 # input text prompt
-prompt: "A highly detailed sand castle"
+prompt: "A bulldog wearing a black pirate hat, no background, no stand"
 negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
 # density thresh for mesh extraction
 density_thresh: 1
 
 ### Output
 outdir: logs
-outname: castle
+outname: bulldog_pirate
 mesh_format: obj
 
 ### Training

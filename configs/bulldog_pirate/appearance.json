@@ -1,9 +1,9 @@
 {
     "seed" : 0,
-    "text" : "A highly detailed sand castle",
+    "text" : "A bulldog wearing a black pirate hat, no background, no stand",
     "negative_text" : "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions",
-    "base_mesh": "logs/castle/castle_mesh.obj",
-    "out_dir": "castle/castle_appearance",
+    "base_mesh": "logs/bulldog_pirate/bulldog_pirate_mesh.obj",
+    "out_dir": "bulldog_pirate/appearance",
     "random_textures": true,
     "iter": 2000,
     "batch": 4,
