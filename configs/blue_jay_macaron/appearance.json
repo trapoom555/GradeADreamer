@@ -1,6 +1,6 @@
 {
     "seed" : 0,
-    "text" : "A DSLR photo of an astronaut riding a horse, no background, no stand",
+    "text" : "A blue jay standing on a large basket of rainbow macarons, no background, no stand",
     "negative_text" : "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions",
     "base_mesh": "logs/blue_jay_macaron/blue_jay_macaron_mesh.obj",
     "out_dir": "blue_jay_macaron/appearance",
