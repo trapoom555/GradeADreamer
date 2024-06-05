@@ -71,7 +71,7 @@ ELAPSED_HUMAN=$(printf '%02d:%02d:%02d' $((ELAPSED_TIME/3600)) $((ELAPSED_TIME%3
 echo "Run with argument '$OPTION': ${ELAPSED_HUMAN} (HH:MM:SS)" >> $TIME_REPORT
 
 echo "[INFO] Saving VDO..."
-kire logs/$OPTION/${OPTION}_appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
+kire logs/$OPTION/appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
 echo "Finished : the saved VDO is located at logs/$OPTION/${OPTION}_output_vdo.mp4"
 
 echo "Time report saved to $TIME_REPORT"
