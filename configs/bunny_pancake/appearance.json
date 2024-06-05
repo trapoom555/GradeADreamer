@@ -1,9 +1,9 @@
 {
     "seed" : 0,
-    "text" : "A DSLR photo of an astronaut riding a horse, no background, no stand",
+    "text" : "A zoomed out DSLR photo of a baby bunny sitting on top of a stack of pancakes, no background, no stand",
     "negative_text" : "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions",
-    "base_mesh": "logs/astro/astro_mesh.obj",
-    "out_dir": "astro/appearance",
+    "base_mesh": "logs/bunny_pancake/bunny_pancake_mesh.obj",
+    "out_dir": "bunny_pancake/appearance",
     "random_textures": true,
     "iter": 2000,
     "batch": 4,

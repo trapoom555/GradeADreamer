@@ -51,12 +51,27 @@ fi
 mkdir -p "$FOLDER"
 echo "Recreated folder: $FOLDER"
 
+TIME_REPORT="logs/${OPTION}/time_report.txt"
+
+# Clear the output file if it exists
+> $TIME_REPORT
+
+START_TIME=$(date +%s) # Get the start time in seconds
+
 echo "[INFO] Running Stage 1... : Create Prior Point Clouds [MVDream + SDS]"
 python main_prior.py --config configs/$OPTION/prior.yaml
 echo "[INFO] Running Stage 2... : Gaussian Splatting Optimization [Stable Diffusion + SDS]"
 python main_gs.py --config configs/$OPTION/gs.yaml
 echo "[INFO] Running Stage 3... : Texture Optimization [Stable Diffusion + SDS]"
 python main_appearance.py --config configs/$OPTION/appearance.json
+
+END_TIME=$(date +%s) # Get the end time in seconds
+ELAPSED_TIME=$((END_TIME - START_TIME)) # Calculate elapsed time in seconds
+ELAPSED_HUMAN=$(printf '%02d:%02d:%02d' $((ELAPSED_TIME/3600)) $((ELAPSED_TIME%3600/60)) $((ELAPSED_TIME%60))) # Convert to HH:MM:SS format
+echo "Run with argument '$OPTION': ${ELAPSED_HUMAN} (HH:MM:SS)" >> $TIME_REPORT
+
 echo "[INFO] Saving VDO..."
-kire logs/$OPTION/${OPTION}_appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
+kire logs/$OPTION/appearance/dmtet_mesh/mesh.obj --save_video logs/$OPTION/${OPTION}_output_vdo.mp4 --wogui
 echo "Finished : the saved VDO is located at logs/$OPTION/${OPTION}_output_vdo.mp4"
+
+echo "Time report saved to $TIME_REPORT"

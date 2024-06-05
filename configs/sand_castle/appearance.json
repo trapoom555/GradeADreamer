@@ -1,9 +1,9 @@
 {
     "seed" : 0,
-    "text" : "A DSLR photo of an astronaut riding a horse, no background, no stand",
+    "text" : "A highly detailed sand castle, no background, no stand",
     "negative_text" : "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions",
-    "base_mesh": "logs/astro/astro_mesh.obj",
-    "out_dir": "astro/appearance",
+    "base_mesh": "logs/sand_castle/sand_castle_mesh.obj",
+    "out_dir": "sand_castle/appearance",
     "random_textures": true,
     "iter": 2000,
     "batch": 4,

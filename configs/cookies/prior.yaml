@@ -2,14 +2,14 @@ seed: 0
 
 ### Input
 # input text prompt
-prompt: "A DSLR photo of an astronaut riding a horse, no background, no stand"
+prompt: "A plate piled high with chocolate chip cookies, no background, no stand"
 negative_prompt: "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, and unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions"
 # density thresh for mesh extraction
 density_thresh: 1
 
 ### Output
 outdir: logs
-outname: astro
+outname: cookies
 
 ### Training
 # guidance scale
