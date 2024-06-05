@@ -39,7 +39,7 @@ python main_prior.py --config configs/astro/prior.yaml
 # Stage 2 : Gaussian Splatting Optimization [Stable Diffusion + SDS]
 python main_gs.py --config configs/astro/gs.yaml
 
-# Stage 3 : Texture Optimization [Stable Diffusion + SDS]"
+# Stage 3 : Texture Optimization [Stable Diffusion + SDS]
 python main_appearance.py --config configs/astro/appearance.json
 ```
 
