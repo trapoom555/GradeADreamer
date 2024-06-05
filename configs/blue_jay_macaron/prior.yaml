@@ -43,7 +43,7 @@ percent_dense: 0.01
 density_start_iter: 0
 density_end_iter: 3000
 densification_interval: 55
-opacity_reset_interval: 500
+opacity_reset_interval: 400
 densify_grad_threshold: 0.01
 render_resolution: 512
 
