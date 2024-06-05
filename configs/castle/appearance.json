@@ -1,6 +1,7 @@
 {
     "seed" : 0,
     "text" : "A highly detailed sand castle",
+    "negative_text" : "ugly, bad anatomy, blurry, pixelated obscure, unnatural colors, poor lighting, dull, unclear, cropped, lowres, low quality, artifacts, duplicate, morbid, mutilated, poorly drawn face, deformed, dehydrated, bad proportions",
     "base_mesh": "logs/castle/castle_mesh.obj",
     "out_dir": "castle/castle_appearance",
     "random_textures": true,
