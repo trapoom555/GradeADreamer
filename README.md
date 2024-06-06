@@ -47,11 +47,3 @@ python main_appearance.py --config configs/astro/appearance.json
 ```bash
 kire logs/astro/astro_appearance/dmtet_mesh/mesh.obj --save_video logs/astro/astro_output_vdo.mp4 --wogui
 ```
-
-## \[Experimental\] Geometry Optimization
-
-After Stage 2, you can run the following command for geometry optimization.
-
-```bash
-python3  main_appearance.py --config configs/astro/geometry.json
-```
