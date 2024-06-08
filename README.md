@@ -47,3 +47,11 @@ python main_appearance.py --config configs/astro/appearance.json
 ```bash
 kire logs/astro/astro_appearance/dmtet_mesh/mesh.obj --save_video logs/astro/astro_output_vdo.mp4 --wogui
 ```
+
+## Evaluation
+
+You will just need to move the needed gif representations of models to evaluate (360° around the 3D model) in the `eval/images` folder and arrange them by folders inside like `eval/images/astro`, also make sure to respect the name of the associated config for automatic search.
+
+```
+python eval.py
+```
