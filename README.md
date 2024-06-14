@@ -1,5 +1,17 @@
 # GradeADreamer
-Text to 3D generation
+
+[Paper Coming Soon...] [Project Page Coming Soon...]
+
+A high-quality Text to 3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
+
+## Result Examples
+
+
+A car made out of sushi |  A blue jay standing on a large basket of rainbow macarons
+:-------------------------:|:-------------------------:
+![car_sushi](eval/images/car_sushi/gad.gif) |  ![blue_jay_macaron](eval/images/blue_jay_macaron/gad.gif)
+**A DSLR photo of an ice cream sundae** |  **A DSLR photo of a plate of fried chicken and waffles with maple syrup on them**
+![icecream](eval/images/icecream/gad.gif) |  ![waffle](eval/images/waffle/gad.gif)
 
 ## Environment Setup
 ```bash
@@ -62,4 +74,4 @@ This repository is built on top of [DreamGaussian](https://github.com/dreamgauss
 
 ## Footnote
 
-This is the final project of the Deep Learning 2024 Spring course at Tsinghua University. 🟣 We would like to express our sincere gratitude to this course for providing us with a robust foundational knowledge of deep learning and offering us the opportunity to undertake a project aligned with our interests. We are particularly grateful to Professor Xiaolin Hu and Professor Jun Zhu, the course lecturers, for their invaluable guidance. Additionally, we extend our appreciation to Professor Hualiu Ping and Professor Liu Yongjin for supplying the necessary computational resources. Finally, we would like to thank the 54 participants in our user study for their valuable contributions.
+This work is the final project of the Deep Learning 2024 Spring course at Tsinghua University 🟣. We would like to express our sincere gratitude to this course !
