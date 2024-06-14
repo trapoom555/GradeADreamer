@@ -55,3 +55,11 @@ You will just need to move the needed gif representations of models to evaluate 
 ```
 python eval.py
 ```
+
+## Acknowledgement
+
+This repository is built on top of [DreamGaussian](https://github.com/dreamgaussian/dreamgaussian) and [Fantasia3D](https://github.com/Gorilla-Lab-SCUT/Fantasia3D) repositories. We would like to thank for their incredible works ❤️.
+
+## Footnote
+
+This is the final project of the Deep Learning 2024 Spring course at Tsinghua University. 🟣 We would like to express our sincere gratitude to this course for providing us with a robust foundational knowledge of deep learning and offering us the opportunity to undertake a project aligned with our interests. We are particularly grateful to Professor Xiaolin Hu and Professor Jun Zhu, the course lecturers, for their invaluable guidance. Additionally, we extend our appreciation to Professor Hualiu Ping and Professor Liu Yongjin for supplying the necessary computational resources. Finally, we would like to thank the 54 participants in our user study for their valuable contributions.
