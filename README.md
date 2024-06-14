@@ -2,16 +2,19 @@
 
 [Paper Coming Soon...] [Project Page Coming Soon...]
 
-A high-quality Text to 3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
+A high-quality text-to-3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
 
 ## Result Examples
-
 
 A car made out of sushi |  A blue jay standing on a large basket of rainbow macarons
 :-------------------------:|:-------------------------:
 ![car_sushi](eval/images/car_sushi/gad.gif) |  ![blue_jay_macaron](eval/images/blue_jay_macaron/gad.gif)
 **A DSLR photo of an ice cream sundae** |  **A DSLR photo of a plate of fried chicken and waffles with maple syrup on them**
 ![icecream](eval/images/icecream/gad.gif) |  ![waffle](eval/images/waffle/gad.gif)
+
+## Resource Requirements
+
+The model was tested on a single RTX 3090 GPU, achieving a generation time of around 30 minutes per asset. We measured the memory peak, and it requires at least 16 GB of GPU VRAM to execute the entire pipeline.
 
 ## Environment Setup
 ```bash
