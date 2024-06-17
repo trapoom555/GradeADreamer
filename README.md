@@ -1,6 +1,6 @@
 # GradeADreamer
 
-[[ArXiV](https://arxiv.org/abs/2406.09850)] [Project Page Coming Soon...]
+[[arXiv](https://arxiv.org/abs/2406.09850)] [Project Page Coming Soon...]
 
 A high-quality text-to-3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
 
