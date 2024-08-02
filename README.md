@@ -1,6 +1,6 @@
 # GradeADreamer
 
-[[arXiv](https://arxiv.org/abs/2406.09850)] [[Project Page](https://trapoom555.github.io/GradeADreamer_Project_Page/)] [ThreeStudio Integration Coming Soon...]
+[[ArXiv](https://arxiv.org/abs/2406.09850)] [[Project Page](https://trapoom555.github.io/GradeADreamer_Project_Page/)] [ThreeStudio Integration Coming Soon...]
 
 A high-quality text-to-3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
 
