@@ -4,7 +4,6 @@ from diffusers import (
 )
 from diffusers.utils.import_utils import is_xformers_available
 
-
 import numpy as np
 import torch
 import torch.nn as nn

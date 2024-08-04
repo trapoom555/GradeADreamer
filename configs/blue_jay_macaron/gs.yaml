@@ -64,3 +64,5 @@ fovy: 49.1
 min_ver: -30
 # training camera max elevation
 max_ver: 30
+
+gpu_id: 1

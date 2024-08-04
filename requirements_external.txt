@@ -1,0 +1,6 @@
+git+https://github.com/ashawkey/diff-gaussian-rasterization
+git+https://github.com/camenduru/simple-knn/
+git+https://github.com/bytedance/MVDream
+git+https://github.com/NVlabs/nvdiffrast/
+git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+git+https://github.com/ashawkey/kiuikit

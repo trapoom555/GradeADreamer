@@ -2,11 +2,11 @@ import os
 import torch
 import numpy as np
 import nvdiffrast.torch as dr
-from gs_renderer import MiniCam
+from gradeadreamer.renderer.gs_renderer import MiniCam
 import torch.nn.functional as F
-from utils.cam_utils import orbit_camera
-from utils.mesh import Mesh, safe_normalize
-from utils.grid_put import mipmap_linear_grid_put_2d
+from gradeadreamer.utils.cam_utils import orbit_camera
+from gradeadreamer.utils.mesh import Mesh, safe_normalize
+from gradeadreamer.utils.grid_put import mipmap_linear_grid_put_2d
 
 @torch.no_grad()
 def save_model(self, texture_size=1024):

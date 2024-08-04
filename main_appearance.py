@@ -18,28 +18,21 @@ import nvdiffrast.torch as dr
 import xatlas
 
 # Import data readers / generators
-from dataset.dataset_mesh import DatasetMesh
-from dataset.dataset_mesh import get_camera_params
+from gradeadreamer.dataset.dataset_mesh import DatasetMesh
+from gradeadreamer.dataset.dataset_mesh import get_camera_params
 
 # Import topology / geometry trainers
-from geometry.dmtet import DMTetGeometry
-from geometry.dlmesh import DLMesh
+from gradeadreamer.geometry.dmtet import DMTetGeometry
+from gradeadreamer.geometry.dlmesh import DLMesh
 
-import render.renderutils as ru
-from render import obj
-from render import material
-from render import util
-from render import mesh
-from render import texture
-from render import mlptexture
-from render import light
-from render import render
-from guidance.sd_utils_appearance import StableDiffusion
+import gradeadreamer.render.renderutils as ru
+from gradeadreamer.render import obj, material, util, mesh, texture, mlptexture, light, render
+from gradeadreamer.guidance.sd_utils_appearance import StableDiffusion
 from tqdm import tqdm
 import open3d as o3d
 import torchvision.transforms as transforms
-from render import util
-from render.video import Video
+from gradeadreamer.render import util
+from gradeadreamer.render.video import Video
 import random
 import imageio as imageio
 import os.path as osp
@@ -236,11 +229,14 @@ def validate_itr(glctx, target, geometry, opt_material, lgt, FLAGS, relight = No
 def save_gif(dir,fps):
     imgpath = dir
     frames = []
-    for idx in sorted(os.listdir(imgpath)):
-        # print(idx)
-        img = osp.join(imgpath,idx)
-        frames.append(imageio.imread(img))
-    imageio.mimsave(os.path.join(dir, 'eval.gif'),frames,'GIF',duration=1/fps)
+    try:
+        for idx in sorted(os.listdir(imgpath)):
+            # print(idx)
+            img = osp.join(imgpath,idx)
+            frames.append(imageio.imread(img))
+        imageio.mimsave(os.path.join(dir, 'eval.gif'),frames,'GIF',duration=1/fps)
+    except:
+        pass
     
 @torch.no_grad()     
 def validate(glctx, geometry, opt_material, lgt, dataset_validate, out_dir, FLAGS, relight= None):
@@ -403,7 +399,7 @@ def optimize_mesh(
     for it, target in enumerate(dataloader_train):
 
         # Mix randomized background into dataset image
-        target = prepare_batch(target, FLAGS.train_background,it, FLAGS.coarse_iter)  
+        target = prepare_batch(target, FLAGS.train_background,it, FLAGS.coarse_iter)
 
         # ==============================================================================================
         #  Display / save outputs. Do it before training so we get initial meshes
@@ -593,21 +589,23 @@ if __name__ == "__main__":
     FLAGS.learn_light         = False
     FLAGS.gpu_number          = 1
     FLAGS.sdf_init_shape_scale=[1.0, 1.0, 1.0]
-    # FLAGS.local_rank = 0
     FLAGS.multi_gpu  = "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 1
     
-     
-    if FLAGS.multi_gpu:
-        FLAGS.gpu_number = int(os.environ["WORLD_SIZE"])
-        FLAGS.local_rank = int(os.environ["LOCAL_RANK"])
-        torch.distributed.init_process_group(backend="nccl", world_size = FLAGS.gpu_number, rank = FLAGS.local_rank)  
-        torch.cuda.set_device(FLAGS.local_rank)
-  
     
     if FLAGS.config is not None:
         data = json.load(open(FLAGS.config, 'r'))
         for key in data:
             FLAGS.__dict__[key] = data[key]
+
+    if FLAGS.gpu_id is not None:
+        torch.cuda.set_device(FLAGS.gpu_id)
+        print("Using GPU %d" % FLAGS.gpu_id)
+
+    if FLAGS.multi_gpu:
+        FLAGS.gpu_number = int(os.environ["WORLD_SIZE"])
+        FLAGS.local_rank = int(os.environ["LOCAL_RANK"])
+        torch.distributed.init_process_group(backend="nccl", world_size = FLAGS.gpu_number, rank = FLAGS.local_rank)  
+        torch.cuda.set_device(FLAGS.local_rank)
 
     if FLAGS.display_res is None:
         FLAGS.display_res = FLAGS.train_res
@@ -741,12 +739,15 @@ if __name__ == "__main__":
         # ==============================================================================================
         #  Validate
         # ==============================================================================================
-        if FLAGS.validate and FLAGS.local_rank == 0:
-            if FLAGS.relight != None:       
-                relight = light.load_env(FLAGS.relight, scale=FLAGS.env_scale)
-            else:
-                relight = None
-            validate(glctx, geometry, mat, lgt, dataset_gif, os.path.join(FLAGS.out_dir, "validate"), FLAGS, relight)
+        try:
+            if FLAGS.validate and FLAGS.local_rank == 0:
+                if FLAGS.relight != None:       
+                    relight = light.load_env(FLAGS.relight, scale=FLAGS.env_scale)
+                else:
+                    relight = None
+                validate(glctx, geometry, mat, lgt, dataset_gif, os.path.join(FLAGS.out_dir, "validate"), FLAGS, relight)
+        except:
+            pass
         if FLAGS.local_rank == 0:
             base_mesh = xatlas_uvmap1(glctx, geometry, mat, FLAGS)
         torch.cuda.empty_cache()
@@ -760,6 +761,3 @@ if __name__ == "__main__":
     
     else:
         assert False, "Invalid mode type"
-   
-    
-

@@ -7,3 +7,4 @@ output/
 point_e_model_cache/
 logs/
 *.bmp
+*.egg-info

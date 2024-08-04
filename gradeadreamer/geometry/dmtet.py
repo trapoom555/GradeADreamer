@@ -10,11 +10,9 @@
 import numpy as np
 import torch
 
-from render import mesh
-from render import render
-from render import util
-from geometry.dmtet_network import Decoder
-from render import regularizer
+from gradeadreamer.render import mesh, render, util
+from gradeadreamer.geometry.dmtet_network import Decoder
+from gradeadreamer.render import regularizer
 import torch.nn.functional as F
 from torch.cuda.amp import custom_bwd, custom_fwd 
 
@@ -203,7 +201,7 @@ class DMTetGeometry(torch.nn.Module):
         imesh = mesh.auto_normals(imesh)
         return imesh
 
-    def render(self, glctx, target, lgt, opt_material, bsdf=None, if_normal=False, mode = 'geometry_modeling', if_flip_the_normal = False, if_use_bump = False):
+    def render(self, device, glctx, target, lgt, opt_material, bsdf=None, if_normal=False, mode = 'geometry_modeling', if_flip_the_normal = False, if_use_bump = False):
         opt_mesh = self.getMesh(opt_material) 
         return render.render_mesh(glctx, 
                                   opt_mesh, 
@@ -219,7 +217,8 @@ class DMTetGeometry(torch.nn.Module):
                                   normal_rotate= target['normal_rotate'],
                                   mode = mode,
                                   if_flip_the_normal = if_flip_the_normal,
-                                  if_use_bump = if_use_bump
+                                  if_use_bump = if_use_bump,
+                                  device = device
                                   )
 
         

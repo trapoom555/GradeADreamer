@@ -28,5 +28,6 @@
     "sds_weight_strategy": 1,
     "early_time_step_range": [0.02, 0.98],
     "late_time_step_range": [0.02, 0.98],
-    "mode": "appearance_modeling"
+    "mode": "appearance_modeling",
+    "gpu_id": 2
 }

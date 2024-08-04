@@ -1,4 +1,4 @@
-from eval_utils import StableDiffusion, seed_everything
+from .eval_utils import StableDiffusion, seed_everything
 from cleanfid import fid
 import cleanfid
 import os

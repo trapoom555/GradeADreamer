@@ -9,7 +9,7 @@
 
 import numpy as np
 import torch
-from render import util
+from gradeadreamer.render import util
 
 # the camera parameters of video.mp4
 def get_camera_params(resolution= 512, fov=45, elev_angle=-20, azim_angle=0):

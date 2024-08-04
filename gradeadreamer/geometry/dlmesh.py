@@ -9,10 +9,7 @@
 
 import torch
 
-from render import mesh
-from render import render
-from render import regularizer
-from render import util
+from gradeadreamer.render import mesh, render, regularizer, util
 from torch.cuda.amp import custom_bwd, custom_fwd 
 import numpy as np
 
