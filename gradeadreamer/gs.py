@@ -155,7 +155,7 @@ class Trainer:
             self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
         # save model
-        save_model(self)
+        save_model(self, name_add="gs")
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
         self.renderer.gaussians.save_ply(os.path.join(path, f'gs.ply'))

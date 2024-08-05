@@ -24,25 +24,19 @@ The model was tested on a single RTX 3090 GPU, achieving a generation time of ar
 conda env create --file=environment.yml
 conda activate GradeADreamer
 
-# Gaussian Splatting
-pip install git+https://github.com/ashawkey/diff-gaussian-rasterization
+# pip indexed packages
+pip install -r requirements.txt
 
-# simple-knn
-pip install git+https://github.com/camenduru/simple-knn/
+# pip github packages
+pip install -r requirements_external.txt
 
-# MVDream
-pip install git+https://github.com/bytedance/MVDream
+## Installing GradeADreamer as a pip package (optional)
 
-# nvdiffrast
-pip install git+https://github.com/NVlabs/nvdiffrast/
+This step might especially be interesting for you if you plan to use [threestudio](https://github.com/threestudio-project/threestudio).
 
-# tiny-cuda-nn
-pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+pip install -e .
 
-# kiuikit
-pip install git+https://github.com/ashawkey/kiuikit
 ```
-
 ## Run (Entire pipeline)
 ```bash
 ./run.sh -opt astro
@@ -57,7 +51,7 @@ python main_prior.py --config configs/astro/prior.yaml
 python main_gs.py --config configs/astro/gs.yaml
 
 # Stage 3 : Texture Optimization [Stable Diffusion + SDS]
-python main_appearance.py --config configs/astro/appearance.json
+python main_appearance.py --config configs/astro/appearance.yaml
 ```
 
 ## Export to VDO

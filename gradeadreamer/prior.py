@@ -8,7 +8,7 @@ import torchvision
 from gradeadreamer.utils.cam_utils import orbit_camera, OrbitCamera
 from gradeadreamer.renderer.gs_renderer import Renderer, MiniCam
 from gradeadreamer.guidance.mvdream_utils import MVDream
-
+from gradeadreamer.utils.save_model import save_model
 
 class Trainer:
     def __init__(self, opt):
@@ -164,6 +164,8 @@ class Trainer:
             for i in tqdm.trange(iters):
                 self.train_step()
 
+        # save model
+        save_model(self, name_add="prior")
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
         self.renderer.gaussians.save_ply(os.path.join(path, 'prior.ply'))
