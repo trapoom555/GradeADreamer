@@ -23,7 +23,7 @@ class StableDiffusion(nn.Module):
         device,
         fp16=True,
         vram_O=False,
-        sd_version="2.1",
+        sd_version="3.0",
         hf_key=None,
         t_range=[0.02, 0.98],
     ):
@@ -35,6 +35,8 @@ class StableDiffusion(nn.Module):
         if hf_key is not None:
             print(f"[INFO] using hugging face custom model key: {hf_key}")
             model_key = hf_key
+        elif self.sd_version == "3.0":
+            model_key = "stabilityai/stable-diffusion-3-medium-diffusers"
         elif self.sd_version == "2.1":
             model_key = "stabilityai/stable-diffusion-2-1-base"
         elif self.sd_version == "2.0":

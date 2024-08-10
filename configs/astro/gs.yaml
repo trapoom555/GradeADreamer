@@ -14,7 +14,7 @@ mesh_format: obj
 
 ### Training
 # guidance scale
-guidance_scale: 100
+guidance_scale: 7.5
 # guidance loss weights (0 to disable)
 lambda_sd: 0.1
 # warmup rgb supervision for image-to-3d

@@ -30,7 +30,7 @@ class StableDiffusion(nn.Module):
                  sds_weight_strategy = 0,
                  early_time_step_range = [0.02, 0.5],
                  late_time_step_range = [0.02, 0.5],
-                 sd_version = '2.1',
+                 sd_version = '3.0',
                  negative_text = ''):
         super().__init__()
 
@@ -41,7 +41,9 @@ class StableDiffusion(nn.Module):
         self.batch = batch 
         self.sd_version = sd_version
         print(f'[INFO] loading stable diffusion...')
-        if self.sd_version == '2.1':
+        if self.sd_version == '3.0':
+            model_key = "stabilityai/stable-diffusion-3-medium-diffusers"
+        elif self.sd_version == '2.1':
             model_key = "stabilityai/stable-diffusion-2-1-base"
         elif self.sd_version == '2.0':
             model_key = "stabilityai/stable-diffusion-2-base"

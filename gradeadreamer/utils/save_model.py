@@ -10,7 +10,7 @@ from gradeadreamer.utils.grid_put import mipmap_linear_grid_put_2d
 
 @torch.no_grad()
 def save_model(self, name_add="", texture_size=1024):
-    path = os.path.join(self.opt.outdir, self.opt.outname, self.opt.outname + f'_mesh_{name_add}.' + self.opt.mesh_format)
+    path = os.path.join(self.opt.outdir, self.opt.outname, self.opt.outname + f'_mesh_{name_add}.' + (self.opt.mesh_format if not None else 'obj'))
     mesh = self.renderer.gaussians.extract_mesh(path, self.opt.density_thresh)
 
     # perform texture extraction

@@ -1,6 +1,6 @@
 from diffusers import (
     DDIMScheduler,
-    StableDiffusionPipeline,
+    StableDiffusion3Pipeline
 )
 
 import numpy as np
@@ -15,6 +15,8 @@ class StableDiffusion(nn.Module):
         model_name='stabilityai/stable-diffusion-2-1-base',
         opt=None,
     ):
+        model_name = "stabilityai/stable-diffusion-3-medium-diffusers"
+
         super().__init__()
 
         self.opt = opt
@@ -23,16 +25,22 @@ class StableDiffusion(nn.Module):
         self.dtype = torch.float32
 
         # Create model
-        pipe = StableDiffusionPipeline.from_pretrained(
+        pipe = StableDiffusion3Pipeline.from_pretrained(
             model_name, torch_dtype=self.dtype
-        )
+        ).to(device)
+        # pipe.transformer.to(memory_format=torch.channels_last)
+        # pipe.vae.to(memory_format=torch.channels_last)
 
-        pipe.to(device)
+        # pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        # pipe.vae.decode = torch.compile(pipe.vae.decode, mode="max-autotune", fullgraph=True)
 
+        print(pipe.__dict__)
+
+        self.pipe = pipe
         self.vae = pipe.vae
         self.tokenizer = pipe.tokenizer
         self.text_encoder = pipe.text_encoder
-        self.model = pipe.unet
+        self.model = pipe.transformer
 
         self.scheduler = DDIMScheduler.from_pretrained(
             model_name, subfolder="scheduler", torch_dtype=self.dtype
@@ -51,26 +59,55 @@ class StableDiffusion(nn.Module):
 
     @torch.no_grad()
     def get_text_embeds(self, prompts, negative_prompts):
-        pos_embeds = self.encode_text(prompts)  # [1, 77, 768]
-        neg_embeds = self.encode_text(negative_prompts)
-        self.embeddings['pos'] = pos_embeds
-        self.embeddings['neg'] = neg_embeds
+        (
+            prompt_embeds,
+            negative_prompt_embeds,
+            pooled_prompt_embeds,
+            negative_pooled_prompt_embeds,
+        ) = self.pipe.encode_prompt(prompt=prompts, prompt_2=None, prompt_3=None, negative_prompt=negative_prompts, num_images_per_prompt=1, do_classifier_free_guidance=True)
+        self.embeddings['pos'] = prompt_embeds
+        self.embeddings['neg'] = negative_prompt_embeds
+        self.embeddings['pos_pooled'] = pooled_prompt_embeds
+        self.embeddings['neg_pooled'] = negative_pooled_prompt_embeds
+        # pos_embeds, pos_pooled_embeds = self.encode_text(prompts)
+        # neg_embeds, neg_pooled_embeds = self.encode_text(negative_prompts)
+        # self.embeddings['pos'] = pos_embeds
+        # self.embeddings['neg'] = neg_embeds
+        # self.embeddings['pos_pooled'] = pos_pooled_embeds
+        # self.embeddings['neg_pooled'] = neg_pooled_embeds
 
         # directional embeddings
         for d in ['front', 'side', 'back']:
-            embeds = self.encode_text([f'{p}, {d} view' for p in prompts])
-            self.embeddings[d] = embeds
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.pipe.encode_prompt(prompt=[f'{p}, {d} view' for p in prompts], prompt_2=None, prompt_3=None, num_images_per_prompt=1, do_classifier_free_guidance=True)
+            self.embeddings[d] = prompt_embeds
+            self.embeddings[f'{d}_pooled'] = pooled_prompt_embeds
+            # embeds, pooled_embeds = self.encode_text([f'{p}, {d} view' for p in prompts])
+            # self.embeddings[d] = embeds
+            # self.embeddings[f'{d}_pooled'] = pooled_embeds
     
-    def encode_text(self, prompt):
-        # prompt: [str]
-        inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        embeddings = self.text_encoder(inputs.input_ids.to(self.device))[0]
-        return embeddings
+    # def encode_text(self, prompt):
+    #     # inputs = self.tokenizer(
+    #     #     prompt,
+    #     #     padding="max_length",
+    #     #     max_length=self.tokenizer.model_max_length,
+    #     #     return_tensors="pt",
+    #     # )
+    #     # outputs = self.text_encoder(inputs.input_ids.to(self.device))
+    #     # embeddings = outputs[0]
+    #     # pooled_embeddings = outputs[1]  # Assuming the second output is the pooled embeddings
+    #     # return embeddings, pooled_embeddings
+    #     (
+    #         prompt_embeds,
+    #         negative_prompt_embeds,
+    #         pooled_prompt_embeds,
+    #         negative_pooled_prompt_embeds,
+    #     ) = self.pipe.encode_prompt(prompt=prompt, num_images_per_prompt=1, do_classifier_free_guidance=True)
+
 
     def train_step(
         self,
@@ -103,6 +140,7 @@ class StableDiffusion(nn.Module):
                 t = torch.randint(self.min_step_detail, self.max_step_detail + 1, (batch_size,), dtype=torch.long, device=self.device)
         else:
             t = torch.randint(self.min_step, self.max_step + 1, (batch_size,), dtype=torch.long, device=self.device)
+        latents = latents.to(self.dtype)
 
         with torch.no_grad():
             # w(t), sigma_t^2
@@ -115,18 +153,22 @@ class StableDiffusion(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             tt = torch.cat([t] * 2)
+            tt = tt.expand(latent_model_input.shape[0])
 
-            embeddings = torch.cat([self.embeddings['pos'].expand(batch_size, -1, -1), self.embeddings['neg'].expand(batch_size, -1, -1)])
+            embeddings = torch.cat([self.embeddings['pos'], self.embeddings['neg'].expand(batch_size, -1, -1)])
+            pooled_embeddings = torch.cat([self.embeddings['pos_pooled'].expand(batch_size, -1), self.embeddings['neg_pooled'].expand(batch_size, -1)])
 
             noise_pred = self.model(
-                latent_model_input, tt, encoder_hidden_states=embeddings
-            ).sample
+                hidden_states=latent_model_input,
+                timestep=tt, 
+                encoder_hidden_states=embeddings,
+                pooled_projections=pooled_embeddings,
+                return_dict=False
+            )[0]
 
             # perform guidance (high scale from paper!)
-            noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + self.opt.guidance_scale * (
-                noise_pred_cond - noise_pred_uncond
-            )
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.opt.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             grad = w * (noise_pred - noise)
             grad = torch.nan_to_num(grad)

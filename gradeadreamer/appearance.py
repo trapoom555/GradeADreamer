@@ -420,7 +420,7 @@ def optimize_mesh(
                                 resolution=512,
                                 fov=45,
                                 elev_angle=-20,
-                                azim_angle =rot_ang,       
+                                azim_angle =rot_ang,
                             )  
                     rot_ang += 1
                     if FLAGS.mode =='geometry_modeling':
@@ -595,6 +595,7 @@ def appeareance_pass(opt):
             FLAGS.__dict__[key] = opt[key]
 
     if FLAGS.gpu_id is not None:
+        FLAGS.gpu_id = torch.device(f"cuda:{FLAGS.gpu_id}" if torch.cuda.is_available() else "cpu")
         torch.cuda.set_device(FLAGS.gpu_id)
         print("Using GPU %d" % FLAGS.gpu_id)
 

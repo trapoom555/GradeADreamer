@@ -23,7 +23,7 @@ class Trainer:
 
         # models
         self.device = torch.device(f"cuda:{opt.gpu_id}" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(opt.gpu_id)
+        torch.cuda.set_device(self.device)
         self.bg_remover = None
         self.guidance_sd = None
 
