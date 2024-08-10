@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-    echo "option: $0 [-opt|--option <value>]"
+    echo "Usage: $0 [-opt|--option <value>] [--gpu <gpu_id>]"
     exit 1
 }
 
@@ -18,8 +18,7 @@ OPTION=""
 while [[ $# -gt 0 ]]; do
     key="$1"
 
-    case $key in
-        -opt|--option)
+    case $key in -opt|--option)
         OPTION="$2"
         if [ -z "$OPTION" ]; then
             echo "Error: No value provided for the option."
@@ -27,6 +26,14 @@ while [[ $# -gt 0 ]]; do
         fi
         shift # Move past the value
         ;;
+        --gpu)
+            GPU_ID="$2"
+            if [ -z "$GPU_ID" ]; then
+                echo "Error: No GPU ID provided."
+                usage
+            fi
+            shift # Move past the value
+            ;;
         *)
         echo "Error: Invalid option '$1'"
         usage
@@ -59,11 +66,11 @@ TIME_REPORT="logs/${OPTION}/time_report.txt"
 START_TIME=$(date +%s) # Get the start time in seconds
 
 echo "[INFO] Running Stage 1... : Create Prior Point Clouds [MVDream + SDS]"
-python main_prior.py --config configs/$OPTION/prior.yaml
+python main_prior.py --config configs/$OPTION/prior.yaml --gpu $GPU_ID
 echo "[INFO] Running Stage 2... : Gaussian Splatting Optimization [Stable Diffusion + SDS]"
-python main_gs.py --config configs/$OPTION/gs.yaml
+python main_gs.py --config configs/$OPTION/gs.yaml --gpu $GPU_ID
 echo "[INFO] Running Stage 3... : Texture Optimization [Stable Diffusion + SDS]"
-python main_appearance.py --config configs/$OPTION/appearance.json
+python main_appearance.py --config configs/$OPTION/appearance.json --gpu $GPU_ID
 
 END_TIME=$(date +%s) # Get the end time in seconds
 ELAPSED_TIME=$((END_TIME - START_TIME)) # Calculate elapsed time in seconds
