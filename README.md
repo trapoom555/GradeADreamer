@@ -1,6 +1,6 @@
 # GradeADreamer
 
-[[ArXiv](https://arxiv.org/abs/2406.09850)] [[Project Page](https://trapoom555.github.io/GradeADreamer_Project_Page/)] [ThreeStudio Integration Coming Soon...]
+[[ArXiv](https://arxiv.org/abs/2406.09850)] [[Project Page](https://trapoom555.github.io/GradeADreamer_Project_Page/)]
 
 A high-quality text-to-3D generation with low occurrence rate of the Multi-face Janus Problem and fast generation time.
 
@@ -31,8 +31,6 @@ pip install -r requirements.txt
 pip install -r requirements_external.txt
 
 ## Installing GradeADreamer as a pip package (optional)
-
-This step might especially be interesting for you if you plan to use [threestudio](https://github.com/threestudio-project/threestudio).
 
 pip install -e .
 
