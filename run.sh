@@ -58,11 +58,11 @@ PROMPT_F="${PROMPT// /_}"
 FOLDER=logs/$PROMPT_F
 
 # Check if the folder exists
-# if [ -d "$FOLDER" ]; then
-#     # stop because prompt already generated
-#     echo "WARNING: The prompt '$PROMPT' has already been generated."
-#     exit 0
-# fi
+if [ -d "$FOLDER" ]; then
+    # stop because prompt already generated
+    echo "WARNING: The prompt '$PROMPT' has already been generated."
+    exit 0
+fi
 
 # Recreate the folder
 mkdir -p "$FOLDER"
