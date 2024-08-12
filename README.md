@@ -37,19 +37,23 @@ pip install -e .
 ```
 ## Run (Entire pipeline)
 ```bash
-./run.sh -opt astro
+./run.sh --prompt "A DSLR photo of an astronaut riding a horse, no background, no 
+stand"
 ```
 
 ## Run each stage separately
 ```bash
 # Stage 1 : Create Prior Point Clouds [MVDream + SDS]
-python main_prior.py --config configs/astro/prior.yaml
+python main_prior.py --prompt "A DSLR photo of an astronaut riding a horse, no background, no 
+stand"
 
 # Stage 2 : Gaussian Splatting Optimization [Stable Diffusion + SDS]
-python main_gs.py --config configs/astro/gs.yaml
+python main_gs.py --prompt "A DSLR photo of an astronaut riding a horse, no background, no 
+stand"
 
 # Stage 3 : Texture Optimization [Stable Diffusion + SDS]
-python main_appearance.py --config configs/astro/appearance.yaml
+python main_appearance.py --prompt "A DSLR photo of an astronaut riding a horse, no background, no 
+stand"
 ```
 
 ## Export to VDO

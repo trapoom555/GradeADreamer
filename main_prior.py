@@ -8,14 +8,16 @@ if __name__ == "__main__":
     from omegaconf import OmegaConf
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True, help="path to the yaml config file")
+    parser.add_argument("--config", required=False, default="./configs/prior.yaml", help="path to the yaml config file")
     parser.add_argument("--gpu", required=False, default="0")
+    parser.add_argument("--prompt", required=True, help="prompt")
     args, extras = parser.parse_known_args()
 
     # override default config from cli
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
     if "gpu_id" not in opt:
         opt.gpu_id = args.gpu
+    opt.prompt = args.prompt + " DSLR, realistic, 4K"
 
     # seed
     seed = opt.seed

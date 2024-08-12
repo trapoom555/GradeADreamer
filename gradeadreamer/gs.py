@@ -23,7 +23,7 @@ class Trainer:
 
         # models
         self.device = torch.device(f"cuda:{opt.gpu_id}" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(opt.gpu_id)
+        torch.cuda.set_device(self.device)
         self.bg_remover = None
         self.guidance_sd = None
 
@@ -45,6 +45,8 @@ class Trainer:
             self.prompt = self.opt.prompt
         if self.opt.negative_prompt is not None:
             self.negative_prompt = self.opt.negative_prompt
+
+        self.opt.outname = f"{self.opt.prompt.replace(' ', '_').replace('.', '')}"
 
         # override if provide a checkpoint
         path = os.path.join(self.opt.outdir, self.opt.outname)
@@ -155,7 +157,8 @@ class Trainer:
             self.renderer.gaussians.prune(min_opacity=0.01, extent=1, max_screen_size=1)
 
         # save model
-        save_model(self, name_add="gs")
+        mesh = save_model(self, name_add="gs")
+        mesh.write(os.path.join(self.opt.outdir, self.opt.outname, f'mesh_gs.obj'))
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
         self.renderer.gaussians.save_ply(os.path.join(path, f'gs.ply'))

@@ -127,4 +127,5 @@ def save_model(self, name_add="", texture_size=1024):
     albedo[tuple(inpaint_coords.T)] = albedo[tuple(search_coords[indices[:, 0]].T)]
 
     mesh.albedo = torch.from_numpy(albedo).to(self.device)
-    mesh.write(path)
+    #mesh.write(path)
+    return mesh

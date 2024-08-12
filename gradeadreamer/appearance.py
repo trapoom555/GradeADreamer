@@ -589,14 +589,18 @@ def appeareance_pass(opt):
     FLAGS.sdf_init_shape_scale=[1.0, 1.0, 1.0]
     FLAGS.multi_gpu  = "WORLD_SIZE" in os.environ and int(os.environ["WORLD_SIZE"]) > 1
     
-    
     if opt is not None:
         for key in opt.keys():
             FLAGS.__dict__[key] = opt[key]
 
+    FLAGS.base_mesh = f"logs/{FLAGS.text.replace(' ', '_').replace('.', '')}/mesh_gs.obj"
+    FLAGS.out_dir = f"{FLAGS.text.replace(' ', '_').replace('.', '')}/appearance"
+    print(f"FLAGS.text: {FLAGS.text}, FLAGS.out_dir: {FLAGS.out_dir}")
+
     if FLAGS.gpu_id is not None:
+        print(f"Using GPU {FLAGS.gpu_id}")
+        FLAGS.gpu_id = torch.device(f"cuda:{FLAGS.gpu_id}" if torch.cuda.is_available() else "cpu")
         torch.cuda.set_device(FLAGS.gpu_id)
-        print("Using GPU %d" % FLAGS.gpu_id)
 
     if FLAGS.multi_gpu:
         FLAGS.gpu_number = int(os.environ["WORLD_SIZE"])
@@ -753,7 +757,8 @@ def appeareance_pass(opt):
         lgt = lgt.clone()
         if FLAGS.local_rank == 0:
             os.makedirs(os.path.join(FLAGS.out_dir, "dmtet_mesh"), exist_ok=True)
-            obj.write_obj(os.path.join(FLAGS.out_dir, "dmtet_mesh/"), base_mesh)
+            #obj.write_obj(os.path.join(FLAGS.out_dir, "dmtet_mesh/"), base_mesh)
+            obj.write_obj(f"logs/{FLAGS.text.replace(' ', '_').replace('.', '')}/", base_mesh)
             light.save_env_map(os.path.join(FLAGS.out_dir, "dmtet_mesh/probe.hdr"), lgt)
     
     else:

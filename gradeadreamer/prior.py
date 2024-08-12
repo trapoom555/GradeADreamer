@@ -23,7 +23,7 @@ class Trainer:
 
         # models
         self.device = torch.device(f"cuda:{opt.gpu_id}" if torch.cuda.is_available() else "cpu")
-        torch.cuda.set_device(opt.gpu_id)
+        torch.cuda.set_device(self.device)
         self.bg_remover = None
         self.guidance_sd = None
 
@@ -45,6 +45,8 @@ class Trainer:
             self.prompt = self.opt.prompt
         if self.opt.negative_prompt is not None:
             self.negative_prompt = self.opt.negative_prompt
+
+        self.opt.outname = f"{self.opt.prompt.replace(' ', '_').replace('.', '')}"
 
         # initialize gaussians to a blob
         self.renderer.initialize(num_pts=self.opt.num_pts)
@@ -165,7 +167,8 @@ class Trainer:
                 self.train_step()
 
         # save model
-        save_model(self, name_add="prior")
+        mesh = save_model(self, name_add="prior")
+        mesh.write(os.path.join(self.opt.outdir, self.opt.outname, self.opt.outname + f'_mesh_prior.' + self.opt.mesh_format))
         # save pointclouds
         path = os.path.join(self.opt.outdir, self.opt.outname)
         self.renderer.gaussians.save_ply(os.path.join(path, 'prior.ply'))
