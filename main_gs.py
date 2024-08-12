@@ -17,7 +17,7 @@ if __name__ == "__main__":
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
     if "gpu_id" not in opt:
         opt.gpu_id = args.gpu
-    opt.prompt = args.prompt + " DSLR, realistic, 4K"
+    opt.prompt = args.prompt
 
     # seed
     seed = opt.seed

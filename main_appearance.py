@@ -16,5 +16,5 @@ if __name__ == "__main__":
     # override default config from cli
     opt = OmegaConf.merge(OmegaConf.load(args.config), OmegaConf.from_cli(extras))
     opt.gpu_id = args.gpu
-    opt.text = args.prompt + " DSLR, realistic, 4K"
+    opt.text = args.prompt
     appeareance_pass(opt)
