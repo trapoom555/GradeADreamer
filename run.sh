@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")"
 
 # Function to display usage information
 usage() {
@@ -59,9 +60,11 @@ FOLDER=logs/$PROMPT_F
 
 # Check if the folder exists
 if [ -d "$FOLDER" ]; then
-    # stop because prompt already generated
-    echo "WARNING: The prompt '$PROMPT' has already been generated."
-    exit 0
+    # check if mesh has been generated
+    if [ -f "$FOLDER/mesh.obj" ]; then
+        echo "WARNING: The prompt '$PROMPT' has already been generated."
+        exit 0
+    fi
 fi
 
 # Recreate the folder
